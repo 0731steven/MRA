@@ -5,7 +5,7 @@ import { useEffect, useState, useRef } from "react";
 import { apiClient } from "@/api/client";
 import {
   UserOutlined, LockOutlined, ArrowRightOutlined,
-  ThunderboltOutlined, FileSearchOutlined, TeamOutlined,
+  ThunderboltOutlined, FileSearchOutlined, TeamOutlined, CodeOutlined,
 } from "@ant-design/icons";
 
 // ── Animated canvas background ────────────────────────────────────────────────
@@ -196,6 +196,8 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [devLoginEnabled, setDevLoginEnabled] = useState(false);
+  const [devLoading, setDevLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -204,6 +206,13 @@ export default function LoginPage() {
   }, []);
 
   const [feishuLoading, setFeishuLoading] = useState(false);
+
+  useEffect(() => {
+    apiClient
+      .get<{ enabled: boolean }>("/api/auth/dev-login/status")
+      .then((res) => setDevLoginEnabled(Boolean(res.data.enabled)))
+      .catch(() => setDevLoginEnabled(false));
+  }, []);
 
   useEffect(() => {
     if (user) { navigate("/sessions", { replace: true }); return; }
@@ -221,13 +230,27 @@ export default function LoginPage() {
     try {
       const endpoint = isRegister ? "/api/auth/register" : "/api/auth/login";
       const res = await apiClient.post<{ token: string }>(endpoint, values);
-      login(res.data.token);
+      await login(res.data.token);
       navigate("/sessions", { replace: true });
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } };
       message.error(e?.response?.data?.detail || "操作失败");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDevLogin() {
+    setDevLoading(true);
+    try {
+      const res = await apiClient.post<{ token: string }>("/api/auth/dev-login");
+      await login(res.data.token);
+      navigate("/sessions", { replace: true });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      message.error(e?.response?.data?.detail || "开发者登录未启用");
+    } finally {
+      setDevLoading(false);
     }
   }
 
@@ -495,6 +518,35 @@ export default function LoginPage() {
                 </Form.Item>
               </div>
             </Form>
+
+            {!isRegister && devLoginEnabled && (
+              <div style={{
+                opacity: mounted ? 1 : 0,
+                transform: mounted ? "translateY(0)" : "translateY(8px)",
+                transition: "opacity 0.4s ease 0.42s, transform 0.4s ease 0.42s",
+                marginBottom: 16,
+              }}>
+                <Button
+                  block
+                  loading={devLoading}
+                  disabled={loading}
+                  icon={!devLoading ? <CodeOutlined /> : undefined}
+                  onClick={handleDevLogin}
+                  style={{
+                    height: 46,
+                    borderRadius: 12,
+                    fontSize: 14,
+                    fontWeight: 650,
+                    color: "#5b21b6",
+                    border: "1.5px solid rgba(124,58,237,0.28)",
+                    background: "linear-gradient(135deg,rgba(238,242,255,0.92),rgba(245,243,255,0.92))",
+                    boxShadow: "0 3px 12px rgba(79,70,229,0.08)",
+                  }}
+                >
+                  开发者一键登录
+                </Button>
+              </div>
+            )}
 
             <div style={{
               textAlign: "center", paddingTop: 20,

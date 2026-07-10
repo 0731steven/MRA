@@ -33,6 +33,15 @@ APP_ENV = os.environ.get("APP_ENV", "development")
 ADMIN_FEISHU_IDS: set[str] = set(filter(None, os.environ.get("ADMIN_FEISHU_IDS", "").split(",")))
 
 
+def _env_flag(name: str, default: str = "false") -> bool:
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _dev_login_enabled() -> bool:
+    """Developer login must be explicitly enabled and is never available in production."""
+    return APP_ENV == "development" and _env_flag("DEV_LOGIN_ENABLED")
+
+
 def create_token(user_id: int) -> str:
     payload = {
         "sub": str(user_id),
@@ -80,24 +89,34 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+@router.get("/dev-login/status")
+async def dev_login_status():
+    return {"enabled": _dev_login_enabled()}
+
+
 @router.post("/dev-login")
 async def dev_login(
-    payload: dict = Body(default={}),
     db: AsyncSession = Depends(get_db),
 ):
-    if APP_ENV != "development":
+    if not _dev_login_enabled():
         raise HTTPException(status_code=404)
-    feishu_user_id = payload.get("feishu_user_id", "dev-user")
-    name = payload.get("name", "Dev User")
-    role = "admin" if feishu_user_id in ADMIN_FEISHU_IDS else "user"
+
+    feishu_user_id = os.environ.get("DEV_LOGIN_USER_ID", "local-developer").strip() or "local-developer"
+    name = os.environ.get("DEV_LOGIN_NAME", "本地开发者").strip() or "本地开发者"
+    configured_role = os.environ.get("DEV_LOGIN_ROLE", "admin").strip().lower()
+    role = configured_role if configured_role in {"user", "admin"} else "admin"
 
     result = await db.execute(select(User).where(User.feishu_user_id == feishu_user_id))
     user = result.scalar_one_or_none()
     if user is None:
         user = User(feishu_user_id=feishu_user_id, name=name, role=role)
         db.add(user)
-        await db.commit()
-        await db.refresh(user)
+    else:
+        # Keep the dedicated local account aligned with the current dev settings.
+        user.name = name
+        user.role = role
+    await db.commit()
+    await db.refresh(user)
     return {"token": create_token(user.id), "user": {"id": user.id, "name": user.name, "role": user.role}}
 
 

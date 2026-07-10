@@ -61,6 +61,17 @@ python run.py
 alembic upgrade head
 ```
 
+本地调试时如需跳过账号密码登录，可在 `backend/.env` 中显式启用开发者登录：
+
+```ini
+APP_ENV=development
+DEV_LOGIN_ENABLED=true
+DEV_LOGIN_NAME=本地开发者
+DEV_LOGIN_ROLE=admin
+```
+
+重启后端后，登录页会显示“开发者一键登录”。该入口在生产环境始终不可用。
+
 ### 2. 前端开发
 
 ```bash
