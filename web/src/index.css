@@ -1,0 +1,413 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+/* ── Global font ─────────────────────────────────────────────────────────── */
+body {
+  font-family: 'Plus Jakarta Sans', 'PingFang SC', 'Helvetica Neue', sans-serif;
+}
+
+/* ── Reading progress bar ──────────────────────────────────────────────── */
+.reading-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  z-index: 9999;
+  background: linear-gradient(90deg, #4f46e5, #7c3aed, #a855f7);
+  transition: width 0.1s linear;
+  pointer-events: none;
+  box-shadow: 0 0 8px rgba(124, 58, 237, 0.5);
+}
+
+/* ── AI Avatar (premium animated) ───────────────────────────────────────── */
+
+@keyframes ai-gradient {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes ai-glow {
+  0%, 100% { opacity: .35; transform: scale(.9); }
+  50%      { opacity: .7;  transform: scale(1.1); }
+}
+@keyframes ai-twinkle {
+  0%, 100% { opacity: 1;   transform: scale(1) rotate(0deg); }
+  50%      { opacity: .85; transform: scale(1.14) rotate(8deg); }
+}
+@keyframes ai-sheen {
+  0%        { transform: translateX(-160%) skewX(-18deg); }
+  55%, 100% { transform: translateX(360%)  skewX(-18deg); }
+}
+
+.ai-avatar-grad {
+  background: linear-gradient(125deg, #7c3aed, #6366f1, #a855f7, #8b5cf6, #6366f1);
+  background-size: 240% 240%;
+  animation: ai-gradient 6s ease infinite;
+}
+.ai-avatar-glow {
+  background: linear-gradient(125deg, #8b5cf6, #6366f1);
+  animation: ai-glow 3.4s ease-in-out infinite;
+}
+.ai-avatar-spark  { animation: ai-twinkle 2.8s ease-in-out infinite; }
+.ai-avatar-sheen  { animation: ai-sheen 4.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-avatar-grad,
+  .ai-avatar-glow,
+  .ai-avatar-spark,
+  .ai-avatar-sheen,
+  .reading-progress-bar { animation: none; transition: none; }
+}
+
+/* ── Report Markdown Body ───────────────────────────────────────────────── */
+
+.report-md.markdown-body {
+  font-family: "Inter", "PingFang SC", "Helvetica Neue", sans-serif;
+  font-size: 15px;
+  line-height: 1.85;
+  color: #1a1a2e;
+}
+.report-md.markdown-body ::selection { background: #ede9fe; color: #3730a3; }
+
+/* ── Headings ─────────────────────────────────────────────────────────── */
+
+.report-md.markdown-body h1 {
+  font-size: 1.85em;
+  font-weight: 800;
+  color: #0f0f1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 24px;
+  letter-spacing: -0.4px;
+  /* accent underline via gradient */
+  background: linear-gradient(180deg, transparent calc(100% - 3px), #c7d2fe calc(100% - 3px));
+  display: inline;
+  padding-bottom: 2px;
+}
+
+/* h1 is usually the report title — we want it block after inline trick */
+.report-md.markdown-body h1 + * { margin-top: 24px; }
+
+.report-md.markdown-body h2 {
+  font-size: 1.3em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 40px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* Left accent bar on h2 */
+.report-md.markdown-body h2::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 1.15em;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #4f46e5, #7c3aed);
+  flex-shrink: 0;
+}
+
+.report-md.markdown-body h3 {
+  font-size: 1.08em;
+  font-weight: 700;
+  color: #312e81;
+  margin-top: 28px;
+  margin-bottom: 10px;
+  border-bottom: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+/* Small diamond marker on h3 */
+.report-md.markdown-body h3::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  transform: rotate(45deg);
+  flex-shrink: 0;
+}
+
+.report-md.markdown-body h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #4338ca;
+  margin-top: 20px;
+  margin-bottom: 8px;
+  border-bottom: none;
+}
+
+/* ── Paragraph & text ─────────────────────────────────────────────────── */
+
+.report-md.markdown-body p {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+.report-md.markdown-body strong {
+  color: #1e1b4b;
+  font-weight: 700;
+  background: linear-gradient(180deg, transparent 60%, #ede9fe 60%);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.report-md.markdown-body em { color: #4338ca; }
+
+/* ── Links ────────────────────────────────────────────────────────────── */
+
+.report-md.markdown-body a {
+  color: #4f46e5;
+  text-decoration: none;
+  border-bottom: 1px solid #c7d2fe;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+.report-md.markdown-body a:hover {
+  color: #4338ca;
+  border-bottom-color: #4338ca;
+  background: #eef2ff;
+}
+
+/* ── Blockquote ───────────────────────────────────────────────────────── */
+
+.report-md.markdown-body blockquote {
+  margin: 18px 0;
+  padding: 14px 20px;
+  border-left: 4px solid #6366f1;
+  background: linear-gradient(90deg, #f5f3ff 0%, #fafafe 100%);
+  border-radius: 0 10px 10px 0;
+  color: #3730a3;
+  font-style: normal;
+  position: relative;
+}
+.report-md.markdown-body blockquote::before {
+  content: '\201C';
+  position: absolute;
+  top: 4px;
+  left: 14px;
+  font-size: 2.4em;
+  color: #c4b5fd;
+  line-height: 1;
+  font-family: Georgia, serif;
+}
+.report-md.markdown-body blockquote p {
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* ── Code ─────────────────────────────────────────────────────────────── */
+
+.report-md.markdown-body code {
+  font-size: 0.875em;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: #eef2ff;
+  color: #4338ca;
+  border: 1px solid #e0e7ff;
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+.report-md.markdown-body pre {
+  margin: 18px 0;
+  border-radius: 12px;
+  background: #1e1e2e !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  overflow-x: auto;
+  position: relative;
+}
+/* Language badge on code blocks */
+.report-md.markdown-body pre::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  font-size: 11px;
+  color: #6b7280;
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.report-md.markdown-body pre code {
+  background: transparent;
+  color: #cdd6f4;
+  border: none;
+  padding: 0;
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+/* ── Lists ────────────────────────────────────────────────────────────── */
+
+.report-md.markdown-body ul,
+.report-md.markdown-body ol {
+  padding-left: 24px;
+  margin-bottom: 14px;
+}
+.report-md.markdown-body li { margin: 6px 0; }
+.report-md.markdown-body li > p { margin: 0; }
+/* Custom bullet color */
+.report-md.markdown-body ul > li::marker { color: #6366f1; }
+.report-md.markdown-body ol > li::marker { color: #6366f1; font-weight: 600; }
+
+/* ── HR ───────────────────────────────────────────────────────────────── */
+
+.report-md.markdown-body hr {
+  border: none;
+  height: 1px;
+  margin: 32px 0;
+  background: linear-gradient(90deg, transparent, #c7d2fe 20%, #a5b4fc 50%, #c7d2fe 80%, transparent);
+}
+
+/* ── Images ───────────────────────────────────────────────────────────── */
+
+.report-md.markdown-body img {
+  max-width: 100%;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+  margin: 16px auto;
+  display: block;
+  transition: box-shadow 0.2s;
+}
+.report-md.markdown-body img:hover {
+  box-shadow: 0 6px 24px rgba(99, 102, 241, 0.18);
+}
+
+/* ── Tables ───────────────────────────────────────────────────────────── */
+
+.report-md.markdown-body table {
+  font-size: 13.5px;
+  margin: 20px 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07), 0 0 0 1px #e8ebf5;
+  width: 100%;
+}
+.report-md.markdown-body table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.report-md.markdown-body table th {
+  background: linear-gradient(135deg, #4338ca 0%, #6366f1 50%, #7c3aed 100%);
+  color: #fff;
+  font-weight: 600;
+  padding: 11px 16px;
+  border: none;
+  text-align: left;
+  letter-spacing: 0.2px;
+  font-size: 13px;
+}
+.report-md.markdown-body table th:first-child { border-radius: 10px 0 0 0; }
+.report-md.markdown-body table th:last-child  { border-radius: 0 10px 0 0; }
+
+.report-md.markdown-body table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid #eef0f8;
+  border-right: none;
+  border-left: none;
+  vertical-align: top;
+  transition: background 0.1s;
+}
+/* First column subtle bold */
+.report-md.markdown-body table td:first-child {
+  font-weight: 500;
+  color: #312e81;
+}
+.report-md.markdown-body table tr:last-child td {
+  border-bottom: none;
+}
+.report-md.markdown-body table tr:last-child td:first-child { border-radius: 0 0 0 10px; }
+.report-md.markdown-body table tr:last-child td:last-child  { border-radius: 0 0 10px 0; }
+.report-md.markdown-body table tr:nth-child(even) td { background: #f8f9ff; }
+.report-md.markdown-body table tr:hover td { background: #f0f0ff; }
+
+/* ── Citation Drawer Body ───────────────────────────────────────────────── */
+
+/* Scale headings down for the narrow 700px drawer */
+.citation-drawer-body.report-md.markdown-body h1 {
+  font-size: 1.35em;
+  background: none;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #e0e7ff;
+  display: block;
+  margin-bottom: 18px;
+}
+.citation-drawer-body.report-md.markdown-body h2 {
+  font-size: 1.1em;
+  margin-top: 28px;
+  margin-bottom: 10px;
+}
+.citation-drawer-body.report-md.markdown-body h3 {
+  font-size: 1em;
+  margin-top: 20px;
+  margin-bottom: 8px;
+}
+.citation-drawer-body.report-md.markdown-body {
+  font-size: 13.5px;
+  line-height: 1.8;
+}
+
+/* Citation meta card flush against top of body (Drawer body padding = 0) */
+.citation-meta-card {
+  margin: 16px 28px 4px !important;
+  flex-shrink: 0;
+}
+
+/* ── Skeleton shimmer loader ────────────────────────────────────────────── */
+
+@keyframes sk-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.sk-shimmer {
+  background: linear-gradient(90deg, #f0f1f8 25%, #e4e6f2 50%, #f0f1f8 75%);
+  background-size: 800px 100%;
+  animation: sk-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* ── Citation drawer resize handle ─────────────────────────────────────── */
+
+.citation-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.citation-resize-handle:hover,
+.citation-resize-handle:active {
+  background: linear-gradient(180deg, transparent 0%, #e0e7ff 30%, #c7d2fe 50%, #e0e7ff 70%, transparent 100%);
+}
+.citation-resize-grip {
+  width: 3px;
+  height: 40px;
+  border-radius: 3px;
+  background: #d1d5db;
+  transition: background 0.15s, height 0.15s;
+}
+.citation-resize-handle:hover .citation-resize-grip,
+.citation-resize-handle:active .citation-resize-grip {
+  background: #6366f1;
+  height: 56px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk-shimmer { animation: none; background: #f0f1f8; }
+  .citation-resize-grip { transition: none; }
+}

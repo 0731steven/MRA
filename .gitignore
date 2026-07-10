@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Env
+.env
+**/.env
+**/.env.*
+!**/.env.example
+*.env.local
+
+# Node
+node_modules/
+web/dist/
+backend/static/
+*.tsbuildinfo
+
+# Output / staging (临时产物，不入库)
+backend/output/
+backend/staging/
+backend/src/scripts/Temppatent_test/
+
+# DB
+*.db
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+
+# Local Claude overrides
+.claude/
+.claude/settings.local.json
+
+# Stray venv accidentally copied into the tree
+Userschaomingshangmineru-env/
