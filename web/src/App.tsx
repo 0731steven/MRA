@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import TutorPage from "./pages/TutorPage";
 import QuestionBankPage from "./pages/QuestionBankPage";
 import TeachingStudio from "./pages/TeachingStudio";
+import ExperimentLab from "./pages/ExperimentLab";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AppLayout from "./components/AppLayout";
@@ -24,6 +25,7 @@ export default function App() {
               <Route path="/dashboard" element={protectedPage(<Dashboard />)} />
               <Route path="/tutor" element={protectedPage(<TutorPage />)} />
               <Route path="/questions" element={protectedPage(<QuestionBankPage />)} />
+              <Route path="/experiments" element={protectedPage(<ExperimentLab />)} />
               <Route path="/teaching" element={protectedPage(<TeachingStudio />)} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>

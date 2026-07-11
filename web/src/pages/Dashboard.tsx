@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { ArrowRightOutlined, BookOutlined, BulbOutlined, ClockCircleOutlined, MessageOutlined, ReadOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, BookOutlined, BulbOutlined, ClockCircleOutlined, ExperimentOutlined, MessageOutlined, ReadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Stats { total: number; qtypes: Record<string, number>; difficulties: Record<string, number>; keypoints: Record<string, number> }
-interface LearningSummary { sessions: number; questions_seen: number; assistant_answers: number; focus_keypoints: { name: string; count: number }[]; recent_sessions: { id: number; title: string; updated_at: string }[] }
+interface LearningSummary { sessions: number; questions_seen: number; assistant_answers: number; attempts: number; attempted_questions: number; correct_questions: number; focus_keypoints: { name: string; count: number }[]; recent_sessions: { id: number; title: string; updated_at: string }[] }
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -33,7 +33,7 @@ export default function Dashboard() {
         </div>
       </section>
       <section className="mt-7 grid gap-5 md:grid-cols-3">
-        {teacher ? <><Stat icon={<BookOutlined />} label="题库总量" value={stats?.total ?? "—"} note="覆盖概率论与数理统计" /><Stat icon={<BulbOutlined />} label="知识点" value={stats ? Object.keys(stats.keypoints).length : "—"} note="支持按考点精准检索" /><Stat icon={<ReadOutlined />} label="题型" value={stats ? Object.keys(stats.qtypes).length : "—"} note={Object.keys(stats?.qtypes || {}).slice(0, 3).join(" · ")} /></> : <><Stat icon={<MessageOutlined />} label="学习会话" value={learning?.sessions ?? "—"} note="你的累计答疑会话" /><Stat icon={<BookOutlined />} label="接触题目" value={learning?.questions_seen ?? "—"} note="答疑中引用的不同题目" /><Stat icon={<BulbOutlined />} label="辅导回答" value={learning?.assistant_answers ?? "—"} note="已获得的个性化讲解" /></>}
+        {teacher ? <><Stat icon={<BookOutlined />} label="题库总量" value={stats?.total ?? "—"} note="覆盖概率论与数理统计" /><Stat icon={<BulbOutlined />} label="知识点" value={stats ? Object.keys(stats.keypoints).length : "—"} note="支持按考点精准检索" /><Stat icon={<ReadOutlined />} label="题型" value={stats ? Object.keys(stats.qtypes).length : "—"} note={Object.keys(stats?.qtypes || {}).slice(0, 3).join(" · ")} /></> : <><Stat icon={<MessageOutlined />} label="学习会话" value={learning?.sessions ?? "—"} note="你的累计答疑会话" /><Stat icon={<BookOutlined />} label="已作答题目" value={learning?.attempted_questions ?? "—"} note={`其中 ${learning?.correct_questions ?? 0} 题已正确完成`} /><Stat icon={<BulbOutlined />} label="作答记录" value={learning?.attempts ?? "—"} note="包含重试与提示使用情况" /></>}
       </section>
       <section className="mt-7 grid gap-6 lg:grid-cols-[1.25fr_.75fr]">
         <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
@@ -47,6 +47,7 @@ export default function Dashboard() {
           <div className="mt-5 space-y-3">
             <Quick icon={<MessageOutlined />} title="按题号问解析" desc="例如：请讲解 P000001" onClick={() => navigate("/tutor?prompt=请讲解 P000001")} />
             <Quick icon={<BulbOutlined />} title="推荐练习题" desc="按知识点和难度智能推荐" onClick={() => navigate("/tutor?mode=recommend")} />
+            <Quick icon={<ExperimentOutlined />} title="参数化实验" desc="调节参数并运行概率统计模拟" onClick={() => navigate("/experiments")} />
             {teacher && <Quick icon={<ReadOutlined />} title="设计一节课" desc="从题库选例题生成课堂方案" onClick={() => navigate("/teaching")} />}
             {!teacher && learning?.recent_sessions.slice(0, 1).map(item => <Quick key={item.id} icon={<ClockCircleOutlined />} title="继续最近学习" desc={item.title} onClick={() => navigate("/tutor")} />)}
           </div>

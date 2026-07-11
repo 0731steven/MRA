@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BookOutlined, HomeOutlined, LogoutOutlined, MessageOutlined, ReadOutlined } from "@ant-design/icons";
+import { BookOutlined, ExperimentOutlined, HomeOutlined, LogoutOutlined, MessageOutlined, ReadOutlined } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -7,6 +7,7 @@ const items = [
   { path: "/dashboard", label: "工作台", icon: <HomeOutlined /> },
   { path: "/tutor", label: "智能答疑", icon: <MessageOutlined /> },
   { path: "/questions", label: "题库", icon: <BookOutlined /> },
+  { path: "/experiments", label: "参数实验", icon: <ExperimentOutlined /> },
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -23,8 +24,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <button onClick={() => navigate("/dashboard")} className="mr-8 flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-700 to-emerald-500 text-lg font-black text-white shadow-md shadow-teal-700/20">π</span>
             <span className="hidden text-left sm:block">
-              <span className="block text-[15px] font-extrabold tracking-tight text-slate-900">概率学伴</span>
-              <span className="block text-[10px] font-medium tracking-wider text-slate-400">PROBABILITY TUTOR</span>
+              <span className="block text-[15px] font-extrabold tracking-tight text-slate-900">概率统计教学助手</span>
+              <span className="block text-[10px] font-medium tracking-wider text-slate-400">PROBABILITY & STATISTICS</span>
             </span>
           </button>
           <nav className="flex flex-1 items-center gap-1 overflow-x-auto">

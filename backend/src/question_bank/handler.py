@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.handler import get_current_user
 from ..db.models import ChatMessage as StoredChatMessage
-from ..db.models import ChatSession, TeachingPlan, User
+from ..db.models import ChatSession, ExperimentRecord, QuestionAttempt, TeachingPlan, User
 from ..db.session import get_db
 from ..integrations.llm_client import ChatMessage, LLMClient
 from .service import (
@@ -201,10 +202,37 @@ async def learning_summary(
                 question_ids.add(source["ID"])
             for keypoint in source.get("keypoint") or []:
                 keypoints[keypoint] = keypoints.get(keypoint, 0) + 1
+    attempts = (
+        await db.execute(
+            select(QuestionAttempt)
+            .where(QuestionAttempt.user_id == user.id)
+            .order_by(QuestionAttempt.id.desc())
+            .limit(200)
+        )
+    ).scalars().all()
+    attempted_ids = {item.question_id for item in attempts}
+    correct_ids = {item.question_id for item in attempts if item.verdict == "correct"}
+    error_types: dict[str, int] = {}
+    for item in attempts:
+        if item.error_type:
+            error_types[item.error_type] = error_types.get(item.error_type, 0) + 1
+    experiment_runs = (
+        await db.execute(
+            select(func.count(ExperimentRecord.id)).where(ExperimentRecord.user_id == user.id)
+        )
+    ).scalar_one()
     return {
         "sessions": len(sessions),
         "questions_seen": len(question_ids),
         "assistant_answers": len(messages),
+        "attempts": len(attempts),
+        "attempted_questions": len(attempted_ids),
+        "correct_questions": len(correct_ids),
+        "experiment_runs": experiment_runs,
+        "error_types": [
+            {"name": name, "count": count}
+            for name, count in sorted(error_types.items(), key=lambda pair: (-pair[1], pair[0]))[:5]
+        ],
         "focus_keypoints": [
             {"name": name, "count": count}
             for name, count in sorted(keypoints.items(), key=lambda pair: (-pair[1], pair[0]))[:6]
@@ -242,6 +270,200 @@ async def question_detail(question_id: str, user: User = Depends(get_current_use
     # Students can reveal an answer from the detail drawer; hiding it in list views
     # prevents accidental spoilers while keeping self-study practical.
     return compact_question(row, include_answer=True) | {"teacher_view": _is_teacher(user)}
+
+
+@router.post("/question-bank/questions/{question_id}/hint")
+async def question_hint(
+    question_id: str,
+    payload: dict = Body(default={}),
+    _user: User = Depends(get_current_user),
+):
+    row = get_question(question_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    answer = str(payload.get("answer") or "").strip()
+    reasoning = str(payload.get("reasoning") or "").strip()
+    prompt = (
+        f"题目：{row.get('question')}\n知识点：{'、'.join(row.get('keypoint') or [])}\n"
+        f"标准答案：{row.get('answer')}\n标准解析：{row.get('explanation')}\n"
+        f"学生当前答案：{answer or '未填写'}\n学生思路：{reasoning or '未填写'}\n"
+        "只给一个能推动下一步的提示，不得直接公布答案，控制在80字以内。"
+    )
+    try:
+        hint = await LLMClient(name="answer_hint").chat(
+            [ChatMessage("user", prompt)],
+            system="你是启发式概率统计教师，只提供最小必要提示。",
+            max_tokens=256,
+        )
+    except Exception:
+        keypoint = "、".join(row.get("keypoint") or [])
+        hint = f"先明确这道题涉及的事件和已知条件，再判断应使用哪个公式。重点回顾：{keypoint}。"
+    return {"hint": hint}
+
+
+@router.post("/question-bank/questions/{question_id}/attempts")
+async def submit_question_attempt(
+    question_id: str,
+    payload: dict = Body(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = get_question(question_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    answer = str(payload.get("answer") or "").strip()
+    reasoning = str(payload.get("reasoning") or "").strip()
+    image_name = str(payload.get("image_name") or "").strip()[:255]
+    image_data_url = str(payload.get("image_data_url") or "")
+    if image_data_url and (not image_data_url.startswith("data:image/") or len(image_data_url) > 3_000_000):
+        raise HTTPException(status_code=400, detail="手写图片格式无效或超过约 2MB")
+    if not answer and not reasoning and not image_name:
+        raise HTTPException(status_code=400, detail="请填写答案、描述思路或上传手写过程")
+    hint_count = max(0, min(int(payload.get("hint_count") or 0), 99))
+    input_mode = str(payload.get("input_mode") or "formula")[:24]
+    prior_count = (
+        await db.execute(
+            select(func.count(QuestionAttempt.id)).where(
+                QuestionAttempt.user_id == user.id,
+                QuestionAttempt.question_id == question_id,
+            )
+        )
+    ).scalar_one()
+    diagnostic_prompt = (
+        f"题目：{row.get('question')}\n标准答案：{row.get('answer')}\n标准解析：{row.get('explanation')}\n"
+        f"学生答案：{answer or '未填写'}\n学生思路：{reasoning or '未填写'}\n"
+        "判断学生当前作答。输出JSON：verdict只能是correct、partial、incorrect、needs_review；"
+        "feedback先肯定正确部分，再指出第一个问题和下一步，不直接抄完整标准答案；"
+        "error_type从概念混淆、条件遗漏、公式选择错误、计算错误、表达不完整、无中选择。"
+    )
+    result: dict[str, Any] = {}
+    try:
+        parsed = await LLMClient(name="answer_diagnostic").chat_json(
+            [ChatMessage("user", diagnostic_prompt)],
+            system="你是严谨的概率统计作答诊断教师。只按提供的标准答案评估，不得虚构。",
+            max_tokens=768,
+        )
+        if isinstance(parsed, dict):
+            result = parsed
+    except Exception:
+        pass
+    allowed = {"correct", "partial", "incorrect", "needs_review"}
+    verdict = str(result.get("verdict") or "")
+    feedback = str(result.get("feedback") or "").strip()
+    error_type = str(result.get("error_type") or "").strip()
+    if verdict not in allowed or not feedback:
+        normalize = lambda text: re.sub(r"[\s$\\{}，,。；;]", "", text.lower())
+        exact = bool(answer) and normalize(answer) == normalize(str(row.get("answer") or ""))
+        verdict = "correct" if exact else "needs_review"
+        feedback = (
+            "答案与题库标准答案一致。请再用一句话说明所用公式或关键依据。"
+            if exact
+            else "作答已保存。当前无法可靠完成自动等价判断，建议补充关键公式或解题思路后再次提交。"
+        )
+        error_type = "" if exact else "表达不完整"
+    attempt = QuestionAttempt(
+        user_id=user.id,
+        question_id=question_id,
+        input_mode=input_mode,
+        answer_text=answer or None,
+        reasoning=reasoning or None,
+        image_name=image_name or None,
+        image_data_url=image_data_url or None,
+        verdict=verdict,
+        feedback=feedback,
+        error_type=error_type or None,
+        hint_count=hint_count,
+        attempt_no=prior_count + 1,
+    )
+    db.add(attempt)
+    await db.commit()
+    await db.refresh(attempt)
+    return {
+        "id": attempt.id,
+        "verdict": verdict,
+        "feedback": feedback,
+        "error_type": error_type or None,
+        "attempt_no": attempt.attempt_no,
+        "hint_count": hint_count,
+    }
+
+
+@router.get("/question-bank/attempts")
+async def list_question_attempts(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    attempts = (
+        await db.execute(
+            select(QuestionAttempt)
+            .where(QuestionAttempt.user_id == user.id)
+            .order_by(QuestionAttempt.id.desc())
+            .limit(100)
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": item.id,
+            "question_id": item.question_id,
+            "verdict": item.verdict,
+            "error_type": item.error_type,
+            "hint_count": item.hint_count,
+            "attempt_no": item.attempt_no,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+        }
+        for item in attempts
+    ]
+
+
+@router.post("/question-bank/experiments/runs")
+async def save_experiment_run(
+    payload: dict = Body(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    experiment_id = str(payload.get("experiment_id") or "").strip()[:64]
+    parameters = payload.get("parameters") or {}
+    result_summary = str(payload.get("result_summary") or "").strip()
+    observation = str(payload.get("observation") or "").strip()
+    if not experiment_id or not isinstance(parameters, dict) or not result_summary:
+        raise HTTPException(status_code=400, detail="实验记录不完整")
+    record = ExperimentRecord(
+        user_id=user.id,
+        experiment_id=experiment_id,
+        parameters_json=json.dumps(parameters, ensure_ascii=False),
+        result_summary=result_summary,
+        observation=observation or None,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return {"id": record.id, "created_at": record.created_at.isoformat() if record.created_at else None}
+
+
+@router.get("/question-bank/experiments/runs")
+async def list_experiment_runs(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    records = (
+        await db.execute(
+            select(ExperimentRecord)
+            .where(ExperimentRecord.user_id == user.id)
+            .order_by(ExperimentRecord.id.desc())
+            .limit(100)
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": item.id,
+            "experiment_id": item.experiment_id,
+            "parameters": json.loads(item.parameters_json),
+            "result_summary": item.result_summary,
+            "observation": item.observation,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+        }
+        for item in records
+    ]
 
 
 @router.post("/question-bank/assistant")

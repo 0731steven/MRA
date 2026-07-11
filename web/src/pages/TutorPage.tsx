@@ -146,7 +146,7 @@ export default function TutorPage() {
 
   return <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[280px_1fr]">
     <aside className="flex h-[calc(100vh-120px)] flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-5 flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-teal-700 text-white"><RobotOutlined /></span><div><div className="text-sm font-extrabold text-slate-900">概率学伴 AI</div><div className="text-[11px] text-emerald-600">● 题库与记忆已连接</div></div></div>
+      <div className="mb-5 flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-teal-700 text-white"><RobotOutlined /></span><div><div className="text-sm font-extrabold text-slate-900">概率统计教学助手</div><div className="text-[11px] text-emerald-600">● 题库与会话已连接</div></div></div>
       <Button type="primary" block icon={<PlusOutlined />} onClick={newChat} className="!mb-5 !font-bold">新建对话</Button>
       <p className="mb-2 text-xs font-bold text-slate-400">回答方式</p>
       <Segmented block value={mode} onChange={value => setMode(String(value))} options={[{ label: "讲解答疑", value: "answer" }, { label: "推荐题目", value: "recommend" }]} />
