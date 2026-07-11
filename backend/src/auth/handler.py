@@ -89,6 +89,12 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+async def require_teacher(user: User = Depends(get_current_user)) -> User:
+    if user.role not in {"teacher", "admin"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher only")
+    return user
+
+
 @router.get("/dev-login/status")
 async def dev_login_status():
     return {"enabled": _dev_login_enabled()}
@@ -104,7 +110,7 @@ async def dev_login(
     feishu_user_id = os.environ.get("DEV_LOGIN_USER_ID", "local-developer").strip() or "local-developer"
     name = os.environ.get("DEV_LOGIN_NAME", "本地开发者").strip() or "本地开发者"
     configured_role = os.environ.get("DEV_LOGIN_ROLE", "admin").strip().lower()
-    role = configured_role if configured_role in {"user", "admin"} else "admin"
+    role = configured_role if configured_role in {"student", "teacher", "user", "admin"} else "teacher"
 
     result = await db.execute(select(User).where(User.feishu_user_id == feishu_user_id))
     user = result.scalar_one_or_none()
@@ -137,7 +143,10 @@ async def register(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="username already exists")
 
-    role = "admin" if username in ADMIN_FEISHU_IDS else "user"
+    requested_role = str(payload.get("role") or "student").lower()
+    role = "admin" if username in ADMIN_FEISHU_IDS else requested_role
+    if role not in {"student", "teacher"} and role != "admin":
+        raise HTTPException(status_code=400, detail="role must be student or teacher")
     user = User(
         feishu_user_id=username,
         name=name,

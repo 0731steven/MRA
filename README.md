@@ -1,78 +1,47 @@
-# Market Research Assistant（MRA）
+# 概率学伴（Probability Tutor）
 
-基于原 IC Research Assistant 改造的市场研究系统。用户通过 Web 或飞书提交问题，系统整合 `company_lib`、Market Engine 和必要的 Web 补充来源，生成市场、产品、竞品或技术报告。
+面向大学概率论与数理统计课程的题库问答与教学助手。系统由 React + FastAPI 构建，使用统一的 DeepSeek 客户端，默认模型为 `deepseek-v4-pro`。
 
-GitHub：`https://github.com/0731steven/MRA`
+## 当前能力
 
-## 当前版本
+- 学生端：题库检索、题目详情、AI 分步讲解、相似题与专题练习推荐
+- 教师端：拥有学生端全部功能，并可按主题、课时、指定题号生成教学设计
+- 身份登录：新账号可选择 `student` 或 `teacher`；旧 `user` / `admin` 账号分别兼容为学生 / 教师
+- 专属题库：内置 `P000001`—`P001007` 共 1007 道题，包含题干、题型、难度、知识点、答案和解析
+- 可追溯回答：模型回答会携带所依据的题号；未配置模型密钥时自动展示题库标准解析
 
-本仓库已完成 MRA MVP 主链路改造：
-
-- 四类报告识别：`market`、`product`、`competitive`、`technology`
-- Step 1 结构化提取：报告类型、研究参数、子问题、关键词
-- `company_lib` L0/L1 分层检索、Markdown chunk 和 BM25 排序
-- Market Engine 只读客户端，支持 `mock` / `real` 双模式
-- 按报告模板评估章节覆盖度，仅对核心缺口触发 Web 补搜
-- KB → ME → Web 的证据块排序与 120k 字符预算
-- 写前数据基础检查，资料不足时自动生成 `insufficient` 报告
-- 三段式报告生成、来源编号、质量评分和非阻塞格式校验
-- 报告写入 `company_lib/generated/{report_type}/`
-- 完整报告可进一步提炼为 `company_lib/fact_cards/` L1 卡片
-- Web 前端支持四类报告确认、MRA 流水线进度和报告展示
-
-原 IEEE、CNIPA、MinerU 代码仍保留在仓库中作为历史参考，但 MRA 主调度器不再导入或执行这些模块。
-
-## 主流程
+## 核心流程
 
 ```text
-提问 / 澄清
-  → 报告分类与参数确认
-  → company_lib 检索
-  → Market Engine 只读查询
-  → 章节覆盖度评估
-  → 条件 Web 补搜
-  → 证据组装与写前检查
-  → 三段式报告生成
-  → 质量评分与格式校验
-  → Web/飞书推送 + Fact Card
+学生：登录 → 输入题号/题干/知识点 → 检索题库 → DeepSeek 分步讲解 → 推荐相关题目
+
+教师：登录 → 设置主题与课时 → 选择或自动匹配题目 → 生成课堂教学设计
 ```
 
 ## 本地启动
 
-```bash
-git clone https://github.com/0731steven/MRA.git
-cd MRA
-```
-
-### 1. 后端
+### 后端
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 python run.py
 ```
 
-开发地址默认为 `http://localhost:8101`。首次启动可使用 SQLite；生产环境建议 PostgreSQL 并执行：
-
-```bash
-alembic upgrade head
-```
-
-本地调试时如需跳过账号密码登录，可在 `backend/.env` 中显式启用开发者登录：
+后端默认为 `http://localhost:8101`。在 `backend/.env` 中配置：
 
 ```ini
-APP_ENV=development
-DEV_LOGIN_ENABLED=true
-DEV_LOGIN_NAME=本地开发者
-DEV_LOGIN_ROLE=admin
+QUESTION_BANK_PATH=./data/probability_questions.jsonl
+DEEPSEEK_API_KEY=你的密钥
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-pro
+DEEPSEEK_REASONING_EFFORT=high
 ```
 
-重启后端后，登录页会显示“开发者一键登录”。该入口在生产环境始终不可用。
-
-### 2. 前端开发
+### 前端
 
 ```bash
 cd web
@@ -80,74 +49,23 @@ npm install
 npm run dev
 ```
 
-生产构建：
+生产构建使用 `npm run build`，产物会写入 `backend/static/` 并由 FastAPI 托管。
 
-```bash
-npm run build
+## 题库数据
+
+默认文件为 `backend/data/probability_questions.jsonl`。每行是一道题，核心字段包括：
+
+```json
+{"ID":"P000001","qtype":"简答题","question":"...","keypoint":["样本空间"],"answer":"...","explanation":"...","hard_level":"易"}
 ```
 
-Vite 会将产物写入 `backend/static/`，由 FastAPI 托管。
-
-## 必要配置
-
-```ini
-APP_PORT=8101
-DATABASE_URL=sqlite+aiosqlite:///./research.db
-COMPANY_LIB_PATH=../company_lib
-MRA_KB_CHAR_BUDGET=120000
-
-DEEPSEEK_API_KEY=                 # 只写在 backend/.env，禁止提交
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-v4-pro
-DEEPSEEK_REASONING_EFFORT=high
-
-ME_API_MODE=mock                  # 本地验证用 mock
-ME_API_BASE_URL=http://127.0.0.1:8002
-ME_API_KEY=
-```
-
-进入南芯网络并确认 ME 数据契约后，将 `ME_API_MODE` 改为 `real`。MRA 对 ME 只执行 GET 请求，不写入 ME 数据库。
-
-全部模型调用统一使用 OpenAI Python SDK 连接 DeepSeek，固定为非流式请求，并启用 high reasoning 与 thinking。`backend/.env` 已被 `.gitignore` 排除，GitHub 中只保留无密钥的 `.env.example`。
-
-## company_lib 目录
-
-```text
-company_lib/
-├── _our_company_profile.md
-├── competitive/
-├── bom/
-├── internal/market_reports/
-├── raw/web/
-├── fact_cards/                 # L1
-├── market_cards/               # L1
-├── tech_cards/                 # L1
-├── company_info/               # L1
-├── generated/                  # L2 报告
-└── staging/
-```
-
-检索顺序为 L1 卡片优先、ME 实时数据其次、L0 文档再次、Web 补充最后。竞品报告会提高财务文档权重，市场和产品报告会提高 BOM 文档权重。
+学生列表页默认不直接显示答案，进入题目详情后可主动查看；教师端列表接口可直接取得完整内容。
 
 ## 验证
 
 ```bash
-cd backend
-pytest -q
-
-cd ../web
-npm run build
+cd web && npm run build
+cd ../backend && pytest -q
 ```
 
-Mock 模式不要求连接南芯内网。没有任何资料时，端到端流水线仍会完成，但报告会明确标记为 `insufficient`，不会编造结论。
-
-## 当前尚未完成
-
-- 真实 ME 端点字段需在南芯内网按实际返回值做最后联调
-- 旧“批量入库”模块内部仍保留 IC 文档分类逻辑，后续应改为市场文档元数据抽取
-- Web 搜索仍复用旧项目脚本壳；生产版应替换为公司实际使用的 AnySearch 接口
-- 数据库生产迁移、飞书卡片和权限体系需要在真实部署环境复验
-
-详细改造记录见 `MRA_MIGRATION.md`。
-# MRA
-# MRA
+真实模型调用仍需要在后端环境变量中配置 `DEEPSEEK_API_KEY`，密钥不得提交到仓库。

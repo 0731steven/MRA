@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Market Research Assistant API", lifespan=lifespan)
+app = FastAPI(title="概率论与数理统计教学助手 API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -117,6 +117,11 @@ app.include_router(ingest_router, prefix="/api", tags=["ingest"])
 from .admin.users_handler import router as admin_users_router
 
 app.include_router(admin_users_router, prefix="/api", tags=["admin"])
+
+# Probability & Mathematical Statistics question bank
+from .question_bank.handler import router as question_bank_router
+
+app.include_router(question_bank_router, prefix="/api", tags=["question_bank"])
 
 # Serve built frontend (Vite output → backend/static/).
 # SPA fallback: client-side routes (/sessions, /review, /reports/:id) must return

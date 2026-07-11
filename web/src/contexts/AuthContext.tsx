@@ -11,7 +11,7 @@ interface User {
   id: number;
   name: string;
   avatar_url: string | null;
-  role: "user" | "admin";
+  role: "student" | "teacher" | "user" | "admin";
 }
 
 interface AuthState {

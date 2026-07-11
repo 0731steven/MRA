@@ -4,7 +4,17 @@
 /* ── Global font ─────────────────────────────────────────────────────────── */
 body {
   font-family: 'Plus Jakarta Sans', 'PingFang SC', 'Helvetica Neue', sans-serif;
+  margin: 0;
+  background: #f6f8f7;
 }
+
+.tutor-markdown p, .question-markdown p, .teaching-markdown p { margin: 0 0 0.8em; }
+.tutor-markdown p:last-child, .question-markdown p:last-child { margin-bottom: 0; }
+.tutor-markdown ul, .tutor-markdown ol, .teaching-markdown ul, .teaching-markdown ol { padding-left: 1.5em; margin: 0.7em 0; }
+.teaching-markdown h1 { font-size: 1.7rem; font-weight: 800; color: #0f172a; margin: 0 0 1.3rem; }
+.teaching-markdown h2 { font-size: 1.15rem; font-weight: 800; color: #0f766e; margin: 2rem 0 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid #e2e8f0; }
+.teaching-markdown h3 { font-size: 1rem; font-weight: 800; color: #334155; margin: 1.4rem 0 0.5rem; }
+.katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5rem 0; }
 
 /* ── Reading progress bar ──────────────────────────────────────────────── */
 .reading-progress-bar {
