@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button, Form, Input, Segmented, message } from "antd";
-import { BookOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
+import { BookOutlined, CodeOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/api/client";
@@ -10,7 +10,14 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [register, setRegister] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [devLoginEnabled, setDevLoginEnabled] = useState(false);
+  const [devLoading, setDevLoading] = useState(false);
   useEffect(() => { if (user) navigate("/dashboard", { replace: true }); }, [user, navigate]);
+  useEffect(() => {
+    apiClient.get<{ enabled: boolean }>("/api/auth/dev-login/status")
+      .then(res => setDevLoginEnabled(Boolean(res.data.enabled)))
+      .catch(() => setDevLoginEnabled(false));
+  }, []);
 
   async function submit(values: { username: string; password: string; name?: string; role?: string }) {
     setLoading(true);
@@ -22,6 +29,20 @@ export default function LoginPage() {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       message.error(detail || "登录失败，请检查账号信息");
     } finally { setLoading(false); }
+  }
+
+  async function devLogin() {
+    setDevLoading(true);
+    try {
+      const res = await apiClient.post<{ token: string }>("/api/auth/dev-login");
+      await login(res.data.token);
+      navigate("/dashboard", { replace: true });
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      message.error(detail || "开发者登录未启用");
+    } finally {
+      setDevLoading(false);
+    }
   }
 
   return (
@@ -52,6 +73,23 @@ export default function LoginPage() {
             <Form.Item name="password" label="密码" rules={[{ required: true, min: 4, message: "密码至少 4 位" }]}><Input.Password size="large" prefix={<LockOutlined />} placeholder="请输入密码" /></Form.Item>
             <Button htmlType="submit" type="primary" block size="large" loading={loading} className="mt-2 !h-12 !font-bold">{register ? "注册并进入" : "登录"}</Button>
           </Form>
+          {!register && devLoginEnabled && (
+            <>
+              <div className="my-5 flex items-center gap-3 text-xs text-slate-300"><span className="h-px flex-1 bg-slate-100" />本地开发环境<span className="h-px flex-1 bg-slate-100" /></div>
+              <Button
+                block
+                size="large"
+                icon={<CodeOutlined />}
+                loading={devLoading}
+                disabled={loading}
+                onClick={devLogin}
+                className="!h-12 !border-teal-200 !bg-teal-50 !font-bold !text-teal-800 hover:!border-teal-400 hover:!bg-teal-100"
+              >
+                开发者一键登录
+              </Button>
+              <p className="mt-2 text-center text-[11px] text-slate-400">以本地教师账号进入，仅开发环境显示</p>
+            </>
+          )}
           <div className="mt-7 border-t border-slate-100 pt-6 text-center text-sm text-slate-400">{register ? "已有账号？" : "还没有账号？"}<button onClick={() => setRegister(v => !v)} className="ml-2 font-bold text-teal-700">{register ? "直接登录" : "立即注册"}</button></div>
         </div>
       </section>
