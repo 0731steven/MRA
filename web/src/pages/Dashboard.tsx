@@ -18,22 +18,28 @@ export default function Dashboard() {
     if (!teacher) apiClient.get<LearningSummary>("/api/question-bank/learning-summary").then(r => setLearning(r.data));
   }, [teacher]);
   const keypoints = Object.entries(stats?.keypoints || {}).slice(0, 8);
+  const accuracy = learning?.attempted_questions ? Math.round((learning.correct_questions / learning.attempted_questions) * 100) : 0;
   return (
     <div>
-      <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#0a4f4b] to-[#0f766e] px-8 py-10 text-white shadow-xl shadow-teal-900/10 lg:px-12">
+      <section className="relative overflow-hidden rounded-[30px] bg-gradient-to-br from-[#073f3c] via-[#0b615b] to-[#0f766e] px-7 py-9 text-white shadow-[0_20px_55px_rgba(15,118,110,.16)] sm:px-9 lg:px-12 lg:py-11">
         <div className="absolute -right-16 -top-24 h-80 w-80 rounded-full border-[50px] border-white/5" />
+        <div className="absolute bottom-0 right-[18%] h-24 w-24 translate-y-12 rounded-full bg-emerald-300/10 blur-xl" />
         <div className="relative max-w-3xl">
-          <p className="mb-3 text-sm font-semibold text-teal-100/70">你好，{user?.name} · {teacher ? "教师工作台" : "学生学习空间"}</p>
-          <h1 className="text-3xl font-black tracking-tight lg:text-4xl">{teacher ? "今天准备讲哪个知识点？" : "今天想弄懂哪一道题？"}</h1>
-          <p className="mt-4 max-w-2xl text-sm leading-7 text-teal-50/70">题目、答案与解析均来自概率论与数理统计专属题库。你可以按题号提问，也可以描述不会的知识点。</p>
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-bold text-teal-50"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />你好，{user?.name}</div>
+          <h1 className="max-w-2xl text-3xl font-black leading-tight tracking-tight lg:text-[42px]">{teacher ? "把知识点组织成一堂好课" : "从一道题开始，真正理解概率统计"}</h1>
+          <p className="mt-4 max-w-xl text-sm leading-7 text-teal-50/70">{teacher ? "从专属题库选择例题，快速生成可编辑的课堂教学方案。" : "选择提示、分步引导或完整解析，按照适合你的节奏完成学习闭环。"}</p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <button onClick={() => navigate("/tutor")} className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-teal-800 shadow-lg">开始智能答疑 <ArrowRightOutlined className="ml-2" /></button>
-            <button onClick={() => navigate(teacher ? "/teaching" : "/questions")} className="rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-bold text-white">{teacher ? "创建教学设计" : "浏览题库"}</button>
+            <button onClick={() => navigate(teacher ? "/teaching" : "/tutor")} className="rounded-xl bg-white px-5 py-3 text-sm font-extrabold text-teal-800 shadow-lg shadow-slate-950/10">{teacher ? "创建教学设计" : "开始智能答疑"} <ArrowRightOutlined className="ml-2" /></button>
+            <button onClick={() => navigate("/questions")} className="rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15">浏览课程题库</button>
           </div>
+        </div>
+        <div className="absolute bottom-8 right-9 hidden w-64 rotate-[-2deg] rounded-2xl border border-white/10 bg-white/10 p-5 backdrop-blur-md xl:block">
+          <div className="flex items-center justify-between text-[10px] font-bold tracking-widest text-teal-100/70"><span>今日学习路径</span><span>3 STEPS</span></div>
+          <div className="mt-4 space-y-3 text-xs font-semibold"><div className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-teal-800">1</span>选择知识点或题目</div><div className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/15">2</span>尝试作答并获取提示</div><div className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/15">3</span>复盘解析与实验验证</div></div>
         </div>
       </section>
       <section className="mt-7 grid gap-5 md:grid-cols-3">
-        {teacher ? <><Stat icon={<BookOutlined />} label="题库总量" value={stats?.total ?? "—"} note="覆盖概率论与数理统计" /><Stat icon={<BulbOutlined />} label="知识点" value={stats ? Object.keys(stats.keypoints).length : "—"} note="支持按考点精准检索" /><Stat icon={<ReadOutlined />} label="题型" value={stats ? Object.keys(stats.qtypes).length : "—"} note={Object.keys(stats?.qtypes || {}).slice(0, 3).join(" · ")} /></> : <><Stat icon={<MessageOutlined />} label="学习会话" value={learning?.sessions ?? "—"} note="你的累计答疑会话" /><Stat icon={<BookOutlined />} label="已作答题目" value={learning?.attempted_questions ?? "—"} note={`其中 ${learning?.correct_questions ?? 0} 题已正确完成`} /><Stat icon={<BulbOutlined />} label="作答记录" value={learning?.attempts ?? "—"} note="包含重试与提示使用情况" /></>}
+        {teacher ? <><Stat icon={<BookOutlined />} label="题库总量" value={stats?.total ?? "—"} note="覆盖概率论与数理统计" /><Stat icon={<BulbOutlined />} label="知识点" value={stats ? Object.keys(stats.keypoints).length : "—"} note="支持按考点精准检索" /><Stat icon={<ReadOutlined />} label="题型" value={stats ? Object.keys(stats.qtypes).length : "—"} note={Object.keys(stats?.qtypes || {}).slice(0, 3).join(" · ")} /></> : <><Stat icon={<MessageOutlined />} label="学习会话" value={learning?.sessions ?? "—"} note="累计保留的答疑会话" /><Stat icon={<BookOutlined />} label="已作答题目" value={learning?.attempted_questions ?? "—"} note={`其中 ${learning?.correct_questions ?? 0} 题已正确完成`} /><Stat icon={<BulbOutlined />} label="当前正确率" value={learning ? `${accuracy}%` : "—"} note={learning?.attempted_questions ? `基于 ${learning.attempted_questions} 道已作答题目` : "完成作答后开始统计"} /></>}
       </section>
       <section className="mt-7 grid gap-6 lg:grid-cols-[1.25fr_.75fr]">
         <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
@@ -57,5 +63,5 @@ export default function Dashboard() {
   );
 }
 
-function Stat({ icon, label, value, note }: { icon: React.ReactNode; label: string; value: number | string; note: string }) { return <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><div className="flex items-start justify-between"><div><p className="text-sm font-semibold text-slate-400">{label}</p><p className="mt-2 text-3xl font-black text-slate-900">{value}</p><p className="mt-2 text-xs text-slate-400">{note}</p></div><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-50 text-lg text-teal-700">{icon}</span></div></div> }
-function Quick({ icon, title, desc, onClick }: { icon: React.ReactNode; title: string; desc: string; onClick: () => void }) { return <button onClick={onClick} className="flex w-full items-center gap-4 rounded-2xl border border-slate-100 p-4 text-left hover:border-teal-200 hover:bg-teal-50/60"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-700">{icon}</span><span className="flex-1"><span className="block text-sm font-bold text-slate-800">{title}</span><span className="mt-1 block text-xs text-slate-400">{desc}</span></span><ArrowRightOutlined className="text-slate-300" /></button> }
+function Stat({ icon, label, value, note }: { icon: React.ReactNode; label: string; value: number | string; note: string }) { return <div className="group rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md"><div className="flex items-start justify-between"><div><p className="text-sm font-semibold text-slate-400">{label}</p><p className="mt-2 text-3xl font-black tracking-tight text-slate-900">{value}</p><p className="mt-2 text-xs text-slate-400">{note}</p></div><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-50 text-lg text-teal-700 transition group-hover:bg-teal-100">{icon}</span></div></div> }
+function Quick({ icon, title, desc, onClick }: { icon: React.ReactNode; title: string; desc: string; onClick: () => void }) { return <button onClick={onClick} className="group flex w-full items-center gap-4 rounded-2xl border border-slate-100 p-4 text-left transition hover:border-teal-200 hover:bg-teal-50/60"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-700 transition group-hover:bg-white">{icon}</span><span className="flex-1"><span className="block text-sm font-bold text-slate-800">{title}</span><span className="mt-1 block text-xs text-slate-400">{desc}</span></span><ArrowRightOutlined className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-teal-700" /></button> }

@@ -145,21 +145,21 @@ export default function TutorPage() {
   }
 
   return <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[280px_1fr]">
-    <aside className="flex h-[calc(100vh-120px)] flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <aside className="flex h-auto flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:h-[calc(100vh-132px)]">
       <div className="mb-5 flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-teal-700 text-white"><RobotOutlined /></span><div><div className="text-sm font-extrabold text-slate-900">概率统计教学助手</div><div className="text-[11px] text-emerald-600">● 题库与会话已连接</div></div></div>
       <Button type="primary" block icon={<PlusOutlined />} onClick={newChat} className="!mb-5 !font-bold">新建对话</Button>
       <p className="mb-2 text-xs font-bold text-slate-400">回答方式</p>
       <Segmented block value={mode} onChange={value => setMode(String(value))} options={[{ label: "讲解答疑", value: "answer" }, { label: "推荐题目", value: "recommend" }]} />
       {mode === "answer" && <><p className="mb-2 mt-4 text-xs font-bold text-slate-400">辅导方式</p><Segmented vertical block value={guidanceMode} onChange={value => setGuidanceMode(String(value))} options={guidanceOptions} /></>}
-      <div className="mt-5 flex min-h-0 flex-1 flex-col border-t border-slate-100 pt-5">
+      <div className="mt-5 flex min-h-0 flex-col border-t border-slate-100 pt-5 lg:flex-1">
         <p className="mb-3 text-xs font-bold text-slate-400">历史会话</p>
-        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+        <div className="max-h-48 min-h-0 space-y-1 overflow-y-auto pr-1 lg:max-h-none lg:flex-1">
           {historyLoading && !sessions.length ? <div className="py-6 text-center"><Spin size="small" /></div> : sessions.length === 0 ? <p className="py-5 text-center text-xs text-slate-300">暂无历史会话</p> : sessions.map(item => <button key={item.id} onClick={() => openSession(item.id)} className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition ${activeSession === item.id ? "bg-teal-50 text-teal-800" : "text-slate-500 hover:bg-slate-50"}`}><span className="min-w-0 flex-1 truncate text-xs font-semibold">{item.title}</span><Popconfirm title="删除此会话？" okText="删除" cancelText="取消" onConfirm={event => { event?.stopPropagation(); deleteSession(item.id); }}><span onClick={event => event.stopPropagation()} className="hidden rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500 group-hover:inline-flex"><DeleteOutlined /></span></Popconfirm></button>)}
         </div>
       </div>
       <div className="mt-4 rounded-2xl bg-amber-50 p-3 text-[11px] leading-5 text-amber-800"><BulbOutlined className="mr-1" /> 最近 20 条消息会用于理解追问；全部会话会在刷新后保留。</div>
     </aside>
-    <section className="flex h-[calc(100vh-120px)] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <section className="flex h-[calc(100dvh-168px)] min-h-[590px] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm lg:h-[calc(100vh-132px)] lg:min-h-[640px]">
       <header className="border-b border-slate-100 px-6 py-5"><h1 className="text-lg font-extrabold text-slate-900">{mode === "answer" ? "智能答疑" : "题目推荐"}</h1><p className="mt-1 text-xs text-slate-400">题库溯源 · 增量回答 · {mode === "answer" ? guidanceOptions.find(item => item.value === guidanceMode)?.label : "智能筛选"}</p></header>
       <div className="flex-1 overflow-y-auto p-6 lg:p-8">
         {historyLoading && activeSession ? <div className="flex h-full items-center justify-center"><Spin /></div> : messages.length === 0 && <div className="mx-auto flex max-w-2xl flex-col items-center py-16 text-center"><span className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-teal-700 to-emerald-500 text-2xl text-white shadow-lg"><RobotOutlined /></span><h2 className="text-2xl font-black text-slate-900">把不会的题交给我</h2><p className="mt-3 text-sm leading-7 text-slate-400">我会记住当前会话，支持围绕同一道题连续追问。</p><div className="mt-8 grid w-full gap-3 sm:grid-cols-2">{starters.map(starter => <button key={starter} onClick={() => send(starter)} className="rounded-2xl border border-slate-200 p-4 text-left text-sm leading-6 text-slate-600 hover:border-teal-300 hover:bg-teal-50">{starter}</button>)}</div></div>}
