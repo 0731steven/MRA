@@ -1,4 +1,3 @@
-import hashlib
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -9,28 +8,16 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import APP_ENV, SECRET_KEY, TEACHER_REGISTRATION_CODE
 from ..db.models import User
 from ..db.session import get_db
+from .security import hash_password, verify_password
 
 
 router = APIRouter()
 bearer = HTTPBearer()
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me-please")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24 * 7
-APP_ENV = os.environ.get("APP_ENV", "development")
-
-
-def _hash_password(password: str) -> str:
-    salt = secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000)
-    return f"{salt}${digest.hex()}"
-
-
-def _verify_password(password: str, stored: str) -> bool:
-    salt, digest = stored.split("$", 1)
-    actual = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000).hex()
-    return secrets.compare_digest(actual, digest)
 
 
 def _env_flag(name: str) -> bool:
@@ -95,16 +82,24 @@ async def register(payload: dict = Body(...), db: AsyncSession = Depends(get_db)
     password = str(payload.get("password") or "")
     name = str(payload.get("name") or username).strip()
     role = str(payload.get("role") or "student").lower()
+    teacher_code = str(payload.get("teacher_code") or "")
     if not username or not password:
         raise HTTPException(status_code=400, detail="请输入用户名和密码")
-    if len(password) < 4:
-        raise HTTPException(status_code=400, detail="密码至少需要 4 位")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="密码至少需要 8 位")
     if role not in {"student", "teacher"}:
         raise HTTPException(status_code=400, detail="身份必须是学生或教师")
+    if role == "teacher" and (
+        not TEACHER_REGISTRATION_CODE
+        or not secrets.compare_digest(
+            teacher_code.encode("utf-8"), TEACHER_REGISTRATION_CODE.encode("utf-8")
+        )
+    ):
+        raise HTTPException(status_code=403, detail="教师邀请码无效或未配置")
     existing = (await db.execute(select(User).where(User.username == username))).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail="用户名已存在")
-    user = User(username=username, name=name, password_hash=_hash_password(password), role=role)
+    user = User(username=username, name=name, password_hash=hash_password(password), role=role)
     db.add(user)
     await db.commit()
     await db.refresh(user)
@@ -116,7 +111,7 @@ async def login(payload: dict = Body(...), db: AsyncSession = Depends(get_db)):
     username = str(payload.get("username") or "").strip()
     password = str(payload.get("password") or "")
     user = (await db.execute(select(User).where(User.username == username))).scalar_one_or_none()
-    if user is None or not user.password_hash or not _verify_password(password, user.password_hash):
+    if user is None or not user.password_hash or not verify_password(password, user.password_hash):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     return {"token": create_token(user.id), "user": _user_payload(user)}
 

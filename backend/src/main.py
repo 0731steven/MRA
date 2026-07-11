@@ -1,31 +1,36 @@
-import os
 from contextlib import asynccontextmanager
-
-from dotenv import load_dotenv
-
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import FileResponse, Response
+from sqlalchemy import text
 
+from .config import ALLOWED_ORIGINS, IS_PRODUCTION, validate_runtime_config
 from .db import models  # noqa: F401 - register ORM models
-from .db.session import Base, engine
+from .db.bootstrap import bootstrap_teacher
+from .db.session import AsyncSessionLocal, Base, engine
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+    validate_runtime_config()
+    # Local SQLite stays one-command friendly. Production schema changes are
+    # deliberately handled by Alembic before the application starts.
+    if not IS_PRODUCTION:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+    await bootstrap_teacher()
     yield
+    await engine.dispose()
 
 
 app = FastAPI(title="概率论与数理统计教学助手 API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,6 +41,18 @@ from .question_bank.handler import router as question_bank_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(question_bank_router, prefix="/api", tags=["question_bank"])
+
+
+@app.get("/health/live", tags=["health"])
+async def liveness():
+    return {"status": "ok"}
+
+
+@app.get("/health/ready", tags=["health"])
+async def readiness():
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SELECT 1"))
+    return {"status": "ready"}
 
 
 class SPAStaticFiles(StaticFiles):

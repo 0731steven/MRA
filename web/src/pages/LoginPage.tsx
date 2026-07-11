@@ -6,6 +6,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/api/client";
 
 export default function LoginPage() {
+  const [form] = Form.useForm();
+  const selectedRole = Form.useWatch("role", form);
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const [register, setRegister] = useState(false);
@@ -19,7 +21,7 @@ export default function LoginPage() {
       .catch(() => setDevLoginEnabled(false));
   }, []);
 
-  async function submit(values: { username: string; password: string; name?: string; role?: string }) {
+  async function submit(values: { username: string; password: string; name?: string; role?: string; teacher_code?: string }) {
     setLoading(true);
     try {
       const res = await apiClient.post<{ token: string }>(register ? "/api/auth/register" : "/api/auth/login", values);
@@ -68,11 +70,12 @@ export default function LoginPage() {
         <section className="flex justify-center lg:justify-end">
           <div className="w-full max-w-[440px] rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_18px_50px_rgba(15,23,42,0.07)] lg:p-10">
           <div className="mb-8"><p className="mb-2 text-xs font-bold tracking-wider text-teal-700">账号入口</p><h2 className="text-2xl font-black tracking-tight text-slate-900">{register ? "创建账号" : "登录教学平台"}</h2><p className="mt-2 text-sm text-slate-500">{register ? "选择使用身份，进入对应工作台" : "使用你的课程平台账号继续"}</p></div>
-          <Form layout="vertical" requiredMark={false} onFinish={submit} initialValues={{ role: "student" }}>
+          <Form form={form} layout="vertical" requiredMark={false} onFinish={submit} initialValues={{ role: "student" }}>
             <Form.Item name="username" label="用户名" rules={[{ required: true, message: "请输入用户名" }]}><Input size="large" prefix={<UserOutlined />} placeholder="请输入用户名" /></Form.Item>
             {register && <Form.Item name="name" label="姓名"><Input size="large" placeholder="你的姓名或昵称" /></Form.Item>}
             {register && <Form.Item name="role" label="使用身份"><Segmented block options={[{ label: "我是学生", value: "student" }, { label: "我是教师", value: "teacher" }]} /></Form.Item>}
-            <Form.Item name="password" label="密码" rules={[{ required: true, min: 4, message: "密码至少 4 位" }]}><Input.Password size="large" prefix={<LockOutlined />} placeholder="请输入密码" /></Form.Item>
+            {register && selectedRole === "teacher" && <Form.Item name="teacher_code" label="教师邀请码" rules={[{ required: true, message: "请输入教师邀请码" }]}><Input.Password size="large" prefix={<LockOutlined />} placeholder="由系统部署方提供" /></Form.Item>}
+            <Form.Item name="password" label="密码" rules={[{ required: true, min: 8, message: "密码至少 8 位" }]}><Input.Password size="large" prefix={<LockOutlined />} placeholder="请输入密码" /></Form.Item>
             <Button htmlType="submit" type="primary" block size="large" loading={loading} className="mt-2 !h-12 !rounded-lg !font-bold">{register ? "注册并进入" : "登录"}</Button>
           </Form>
           {!register && devLoginEnabled && (

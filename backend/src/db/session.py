@@ -1,11 +1,13 @@
-import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import event
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./teaching_assistant.db")
+from ..config import DATABASE_URL
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine_options: dict[str, object] = {"echo": False, "pool_pre_ping": True}
+if DATABASE_URL.startswith("sqlite"):
+    engine_options.pop("pool_pre_ping")
+engine = create_async_engine(DATABASE_URL, **engine_options)
 
 # Enable FK enforcement for SQLite so orphaned child rows are blocked at DB level
 if DATABASE_URL.startswith("sqlite"):

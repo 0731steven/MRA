@@ -1,31 +1,27 @@
 # 概率统计教学助手
 
-面向大学概率论与数理统计课程的题库问答与教学助手。系统由 React + FastAPI 构建，使用统一的 DeepSeek 客户端，默认模型为 `deepseek-v4-pro`。
+面向大学概率论与数理统计课程的题库问答与教学助手。系统由 React、FastAPI 和 SQLAlchemy 构建，开发环境可使用 SQLite，正式部署使用 PostgreSQL。
 
 ## 当前能力
 
 - 学生端：四种辅导方式、流式答疑、多方式作答诊断、个人学习概览
 - 探究实验：提供大数定律、概率分布、极限定理、贝叶斯、置信区间与蒙特卡洛等 8 个参数化实验
 - 教师端：按主题、课时、指定题号生成教学设计，并可编辑、保存历史和导出 Markdown
-- 身份登录：账号分为 `student` 和 `teacher`
-- 专属题库：内置 `P000001`—`P001007` 共 1007 道题，包含题干、题型、难度、知识点、答案和解析
-- 可追溯回答：模型回答会携带所依据的题号；未配置模型密钥时自动展示题库标准解析
+- 身份登录：账号分为 `student` 和 `teacher`，教师注册需要部署方配置的邀请码
+- 专属题库：内置 `P000001`—`P001007` 共 1007 道题
 - 会话记忆：自动保存历史会话，并携带最近 20 条消息支持连续追问
-- 智能续问：只有明确的续问才会继承上一题来源，切换知识点时自动重新检索
 
-## 核心流程
+## 环境要求
 
-```text
-学生：登录 → 输入题号/题干/知识点 → 检索题库 → DeepSeek 分步讲解 → 推荐相关题目
+- Python 3.12
+- Node.js 22
+- 本地开发无需单独安装数据库
+- PostgreSQL 17（正式环境）
+- Docker 与 Docker Compose（可选，用于一键模拟正式部署）
 
-连续追问：恢复历史会话 → 加载最近 20 条消息 → 继承上一轮题目来源 → 结合题库继续回答
+## 本地开发（SQLite）
 
-教师：登录 → 设置主题与课时 → 选择或自动匹配题目 → 生成课堂教学设计
-```
-
-## 本地启动
-
-### 后端
+后端：
 
 ```bash
 cd backend
@@ -36,41 +32,144 @@ cp .env.example .env
 python run.py
 ```
 
-后端默认为 `http://localhost:8101`。在 `backend/.env` 中配置：
-
-```ini
-QUESTION_BANK_PATH=./data/probability_questions.jsonl
-DEEPSEEK_API_KEY=你的密钥
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-v4-pro
-DEEPSEEK_REASONING_EFFORT=high
-```
-
-### 前端
+前端另开一个终端：
 
 ```bash
 cd web
-npm install
+npm ci
 npm run dev
 ```
 
-生产构建使用 `npm run build`，产物会写入 `backend/static/` 并由 FastAPI 托管。
+浏览器访问 `http://localhost:5173`。SQLite 数据默认写入 `backend/teaching_assistant.db`，适合开发和测试。
+
+## PostgreSQL / Docker 部署验证
+
+这套方式会构建前端、运行 Alembic 数据库迁移并启动 PostgreSQL 与后端。企业的真实服务器、域名和密钥不应写入源代码。
+
+1. 安装 Docker Desktop。
+2. 创建配置文件：
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+3. 至少修改以下配置：
+
+```ini
+SECRET_KEY=至少32个字符的随机密钥
+POSTGRES_PASSWORD=数据库强密码
+BOOTSTRAP_TEACHER_USERNAME=admin
+BOOTSTRAP_TEACHER_PASSWORD=至少12位的初始教师密码
+```
+
+4. 构建并启动：
+
+```bash
+docker compose up --build -d
+docker compose ps
+```
+
+浏览器访问 `http://localhost:8101`。首次启动会执行 `alembic upgrade head`，并在配置了初始教师账号时创建该账号。重复启动不会重复创建。
+
+查看日志或停止服务：
+
+```bash
+docker compose logs -f app
+docker compose down
+```
+
+`docker compose down` 不会删除 PostgreSQL 数据卷。只有明确执行 `docker compose down -v` 才会删除数据库数据。
+
+## 正式环境配置
+
+配置模板位于 `backend/.env.example`，正式配置复制为 `backend/.env`，不要提交到 Git。
+
+| 变量 | 用途 |
+|---|---|
+| `APP_ENV` | 本地为 `development`；Docker 会覆盖为 `production` |
+| `DATABASE_URL` | 直接运行后端时的数据库地址 |
+| `SECRET_KEY` | JWT 签名密钥，生产环境至少 32 个字符 |
+| `ALLOWED_ORIGINS` | 逗号分隔的前端来源；同域部署可留空 |
+| `POSTGRES_DB` | Docker PostgreSQL 数据库名 |
+| `POSTGRES_USER` | Docker PostgreSQL 用户名 |
+| `POSTGRES_PASSWORD` | Docker PostgreSQL 密码；用于连接地址时特殊字符需 URL 编码 |
+| `BOOTSTRAP_TEACHER_*` | 可选的首个教师账号，只在账号不存在时创建 |
+| `TEACHER_REGISTRATION_CODE` | 可选；教师自行注册时必须提供的邀请代码 |
+| `DEEPSEEK_API_KEY` | 部署方提供的模型 API Key |
+
+不使用 Docker、直接连接企业 PostgreSQL 时设置：
+
+```ini
+APP_ENV=production
+DATABASE_URL=postgresql+asyncpg://用户名:URL编码后的密码@数据库地址:5432/数据库名
+SECRET_KEY=至少32个字符的随机密钥
+ALLOWED_ORIGINS=https://实际前端域名
+```
+
+生产模式会拒绝默认密钥、非 PostgreSQL 数据库及通配符 CORS 配置。若前后端由同一个域名提供，浏览器请求属于同源访问，`ALLOWED_ORIGINS` 可以留空。
+
+## 数据库迁移与升级
+
+数据库结构由 Alembic 管理。修改 ORM 模型后，应创建并检查迁移：
+
+```bash
+cd backend
+alembic revision --autogenerate -m "describe change"
+alembic upgrade head
+alembic check
+```
+
+企业升级源代码后，在启动新版本应用前执行：
+
+```bash
+alembic upgrade head
+```
+
+Docker 镜像的入口脚本会自动执行这一步。SQLite 与 PostgreSQL 是两套独立数据库，已有 SQLite 数据不会因为修改连接地址自动复制到 PostgreSQL；如需保留历史数据，应在正式切换前单独制定数据迁移和核对方案。
+
+## 备份与恢复
+
+Docker 环境备份示例：
+
+```bash
+docker compose exec -T db pg_dump -U mra -d mra -Fc > mra.backup
+```
+
+恢复前应停止应用写入，并由部署人员确认目标数据库：
+
+```bash
+docker compose exec -T db pg_restore -U mra -d mra --clean --if-exists < mra.backup
+```
+
+实际生产环境的备份频率、保存位置、加密和恢复演练由部署方按照企业制度执行。
 
 ## 题库数据
 
-默认文件为 `backend/data/probability_questions.jsonl`。每行是一道题，核心字段包括：
+默认题库为 `backend/data/probability_questions.jsonl`。每行是一道题：
 
 ```json
 {"ID":"P000001","qtype":"简答题","question":"...","keypoint":["样本空间"],"answer":"...","explanation":"...","hard_level":"易"}
 ```
 
-学生列表页默认不直接显示答案，进入题目详情后可主动查看；教师端列表接口可直接取得完整内容。
+题库文件不存放在 PostgreSQL 中，切换数据库不会改变题库内容。
 
 ## 验证
 
 ```bash
-cd web && npm run build
+cd web && npm ci && npm run build
 cd ../backend && pytest -q
 ```
 
-真实模型调用仍需要在后端环境变量中配置 `DEEPSEEK_API_KEY`，密钥不得提交到仓库。
+CI 会分别在全新 SQLite 和真实 PostgreSQL 数据库上执行 `alembic upgrade head`、`alembic check` 和后端测试，并执行前端生产构建。本地已有的旧 SQLite 文件可能没有 Alembic 版本标记，不应在未备份、未核对结构前直接执行 `alembic stamp`。
+
+服务提供两个健康检查接口：
+
+- `/health/live`：应用进程存活
+- `/health/ready`：应用可以连接数据库
+
+## 源代码交付边界
+
+本仓库交付应用源代码、依赖清单、数据库迁移、容器配置、配置模板和部署说明。部署方负责提供实际服务器、域名、HTTPS 证书、数据库密码、`SECRET_KEY`、模型 API Key、网络策略以及日常备份与监控。
+
+交付前不得把 `.env`、数据库文件、真实密码、真实 API Key 或企业内部地址提交到仓库。
