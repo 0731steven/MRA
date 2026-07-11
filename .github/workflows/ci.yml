@@ -1,4 +1,4 @@
-name: MRA CI
+name: Probability Tutor CI
 
 on:
   push:
@@ -26,8 +26,8 @@ jobs:
       - run: pip install -r requirements.txt
       - run: pytest -q
         env:
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
           DEEPSEEK_MOCK: "true"
-          ME_API_MODE: mock
 
   frontend:
     runs-on: ubuntu-latest

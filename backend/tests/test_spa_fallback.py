@@ -1,10 +1,4 @@
-"""Tests for the SPA static-file fallback in main.py.
-
-Client-side routes (/sessions, /review, ...) must serve index.html on direct
-navigation; /api/* must keep precedence (never fall through to index.html).
-
-Uses raw ASGI transport (no lifespan), so no DB/background tasks are started.
-"""
+"""Tests for the teaching assistant SPA fallback."""
 from __future__ import annotations
 
 import os
@@ -30,7 +24,7 @@ async def _get(path: str) -> httpx.Response:
 
 async def test_client_route_serves_index_html() -> None:
     """An unknown non-API path returns 200 + the SPA shell, not 404."""
-    resp = await _get("/review")
+    resp = await _get("/tutor")
     assert resp.status_code == 200
     assert "<div id=\"root\">" in resp.text or "<!doctype html" in resp.text.lower()
 

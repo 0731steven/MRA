@@ -10,7 +10,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState<Stats | null>(null);
-  const teacher = user?.role === "teacher" || user?.role === "admin";
+  const teacher = user?.role === "teacher";
   useEffect(() => { apiClient.get<Stats>("/api/question-bank/stats").then(r => setStats(r.data)); }, []);
   const keypoints = Object.entries(stats?.keypoints || {}).slice(0, 8);
   return (

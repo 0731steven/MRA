@@ -13,7 +13,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const teacher = user?.role === "teacher" || user?.role === "admin";
+  const teacher = user?.role === "teacher";
   const nav = teacher ? [...items, { path: "/teaching", label: "教学设计", icon: <ReadOutlined /> }] : items;
 
   return (

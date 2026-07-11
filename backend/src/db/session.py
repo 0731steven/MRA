@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import event
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./research.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./teaching_assistant.db")
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 

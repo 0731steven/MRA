@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -15,7 +14,7 @@ router = APIRouter()
 
 
 def _is_teacher(user: User) -> bool:
-    return user.role in {"teacher", "admin"}
+    return user.role == "teacher"
 
 
 def _context_text(rows: list[dict[str, Any]]) -> str:

@@ -9,7 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function TeachingStudio() {
   const { user } = useAuth();
-  const teacher = user?.role === "teacher" || user?.role === "admin";
+  const teacher = user?.role === "teacher";
   const [content, setContent] = useState(""); const [ids, setIds] = useState<string[]>([]); const [loading, setLoading] = useState(false);
   if (!teacher) return <Result status="403" title="教师专属功能" subTitle="学生账号可以使用智能答疑和题库练习。" />;
   async function submit(values: { topic: string; duration: number; objectives?: string; question_ids?: string[] }) { setLoading(true); setContent(""); try { const r = await apiClient.post("/api/question-bank/teaching-plan", values); setContent(r.data.content); setIds(r.data.question_ids); } finally { setLoading(false); } }

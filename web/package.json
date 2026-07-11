@@ -1,5 +1,5 @@
 {
-  "name": "market-research-assistant-web",
+  "name": "probability-tutor-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -10,24 +10,15 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
-    "@types/js-yaml": "^4.0.9",
     "antd": "^5.23.0",
     "axios": "^1.7.9",
-    "github-markdown-css": "^5.9.0",
-    "js-yaml": "^4.1.1",
     "katex": "^0.17.0",
-    "pdfjs-dist": "^5.7.284",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.3",
     "react-router-dom": "^7.1.0",
-    "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
-    "rehype-raw": "^7.0.0",
-    "remark-frontmatter": "^5.0.0",
-    "remark-gfm": "^4.0.0",
     "remark-math": "^6.0.0",
-    "remark-wiki-link": "^2.0.1",
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
