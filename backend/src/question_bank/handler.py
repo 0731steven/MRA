@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.handler import get_current_user
-from ..db.models import User
+from ..db.models import ChatMessage as StoredChatMessage
+from ..db.models import ChatSession, User
+from ..db.session import get_db
 from ..integrations.llm_client import ChatMessage, LLMClient
 from .service import bank_stats, compact_question, get_question, retrieve_context, search_questions
 
@@ -25,6 +31,101 @@ def _context_text(rows: list[dict[str, Any]]) -> str:
         f"知识点：{'、'.join(row.get('keypoint') or [])}"
         for row in rows
     )
+
+
+def _session_payload(session: ChatSession) -> dict[str, Any]:
+    return {
+        "id": session.id,
+        "title": session.title,
+        "mode": session.mode,
+        "created_at": session.created_at.isoformat() if session.created_at else None,
+        "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+    }
+
+
+def _message_payload(message: StoredChatMessage) -> dict[str, Any]:
+    try:
+        sources = json.loads(message.sources_json) if message.sources_json else []
+    except json.JSONDecodeError:
+        sources = []
+    return {
+        "id": message.id,
+        "role": message.role,
+        "content": message.content,
+        "sources": sources,
+        "model": message.model,
+        "created_at": message.created_at.isoformat() if message.created_at else None,
+    }
+
+
+async def _owned_session(db: AsyncSession, session_id: int, user_id: int) -> ChatSession:
+    session = (
+        await db.execute(
+            select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return session
+
+
+@router.get("/question-bank/sessions")
+async def list_chat_sessions(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    sessions = (
+        await db.execute(
+            select(ChatSession)
+            .where(ChatSession.user_id == user.id)
+            .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
+        )
+    ).scalars().all()
+    return [_session_payload(item) for item in sessions]
+
+
+@router.post("/question-bank/sessions")
+async def create_chat_session(
+    payload: dict = Body(default={}),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    mode = str(payload.get("mode") or "answer")
+    session = ChatSession(user_id=user.id, title="新对话", mode=mode)
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return _session_payload(session)
+
+
+@router.get("/question-bank/sessions/{session_id}/messages")
+async def list_chat_messages(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await _owned_session(db, session_id, user.id)
+    messages = (
+        await db.execute(
+            select(StoredChatMessage)
+            .where(StoredChatMessage.session_id == session.id)
+            .order_by(StoredChatMessage.id.asc())
+        )
+    ).scalars().all()
+    return {"session": _session_payload(session), "messages": [_message_payload(item) for item in messages]}
+
+
+@router.delete("/question-bank/sessions/{session_id}")
+async def delete_chat_session(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    session = await _owned_session(db, session_id, user.id)
+    await db.execute(delete(StoredChatMessage).where(StoredChatMessage.session_id == session.id))
+    await db.delete(session)
+    await db.commit()
+    return {"deleted": session_id}
 
 
 @router.get("/question-bank/stats")
@@ -64,27 +165,84 @@ async def question_detail(question_id: str, user: User = Depends(get_current_use
 
 
 @router.post("/question-bank/assistant")
-async def assistant(payload: dict = Body(...), user: User = Depends(get_current_user)):
+async def assistant(
+    payload: dict = Body(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     message = str(payload.get("message") or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="请输入问题")
     mode = str(payload.get("mode") or "answer")
     question_ids = [str(item) for item in payload.get("question_ids") or []]
-    context_rows = retrieve_context(message, question_ids, limit=6)
-    if not context_rows:
+    session_id = payload.get("session_id")
+    if session_id:
+        session = await _owned_session(db, int(session_id), user.id)
+        session.mode = mode
+    else:
+        session = ChatSession(user_id=user.id, title=message[:36], mode=mode)
+        db.add(session)
+        await db.flush()
+
+    history = (
+        await db.execute(
+            select(StoredChatMessage)
+            .where(StoredChatMessage.session_id == session.id)
+            .order_by(StoredChatMessage.id.desc())
+            .limit(20)
+        )
+    ).scalars().all()
+    history = list(reversed(history))
+    prior_source_ids: list[str] = []
+    for item in reversed(history):
+        if item.sources_json:
+            try:
+                prior_source_ids.extend(source.get("ID", "") for source in json.loads(item.sources_json))
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if prior_source_ids:
+            break
+    context_rows = retrieve_context(message, [*question_ids, *filter(None, prior_source_ids)], limit=6)
+    session.updated_at = datetime.now(timezone.utc)
+    if session.title == "新对话":
+        session.title = message[:36]
+    db.add(StoredChatMessage(session_id=session.id, role="user", content=message))
+    await db.commit()
+    await db.refresh(session)
+
+    async def save_answer(answer_text: str, sources: list[dict[str, Any]], model_name: str) -> dict[str, Any]:
+        db.add(
+            StoredChatMessage(
+                session_id=session.id,
+                role="assistant",
+                content=answer_text,
+                sources_json=json.dumps(sources, ensure_ascii=False),
+                model=model_name,
+            )
+        )
+        session.updated_at = datetime.now(timezone.utc)
+        await db.commit()
         return {
-            "answer": "我暂时没有在当前题库中找到足够接近的题目。你可以换一个知识点、题号，或补充更完整的题干。",
-            "sources": [],
-            "model": "retrieval-only",
+            "answer": answer_text,
+            "sources": sources,
+            "model": model_name,
+            "session_id": session.id,
         }
+
+    if not context_rows:
+        return await save_answer(
+            "我暂时没有在当前题库中找到足够接近的题目。你可以换一个知识点、题号，或补充更完整的题干。",
+            [],
+            "retrieval-only",
+        )
 
     if mode == "recommend":
         intro = "根据你的要求，我从题库中筛选了这些题。建议先独立作答，再查看解析："
-        return {
-            "answer": intro,
-            "sources": [compact_question(row, include_answer=False) for row in context_rows],
-            "model": "question-bank-retrieval",
-        }
+        return await save_answer(
+            intro,
+            [compact_question(row, include_answer=False) for row in context_rows],
+            "question-bank-retrieval",
+        )
 
     system = (
         "你是概率论与数理统计教学助手。必须以给定题库资料为核心作答，不得虚构题号、题干、答案或结论。"
@@ -94,8 +252,12 @@ async def assistant(payload: dict = Body(...), user: User = Depends(get_current_
     if _is_teacher(user):
         system += "当前用户是教师，可以补充教学目标、课堂提问建议和分层讲解方法。"
     try:
+        conversation = [ChatMessage(item.role, item.content) for item in history]
+        conversation.append(
+            ChatMessage("user", f"题库资料：\n{_context_text(context_rows)}\n\n当前问题：{message}")
+        )
         answer = await LLMClient(name="question_bank_tutor").chat(
-            [ChatMessage("user", f"题库资料：\n{_context_text(context_rows)}\n\n用户问题：{message}")],
+            conversation,
             system=system,
             max_tokens=4096,
         )
@@ -110,11 +272,11 @@ async def assistant(payload: dict = Body(...), user: User = Depends(get_current_
             f"**{first['ID']}**\n\n{first.get('explanation') or first.get('answer')}"
         )
         model = "question-bank-fallback"
-    return {
-        "answer": answer,
-        "sources": [compact_question(row, include_answer=False) for row in context_rows],
-        "model": model,
-    }
+    return await save_answer(
+        answer,
+        [compact_question(row, include_answer=False) for row in context_rows],
+        model,
+    )
 
 
 @router.post("/question-bank/teaching-plan")
