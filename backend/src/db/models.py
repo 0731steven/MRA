@@ -47,3 +47,21 @@ class ChatMessage(Base):
     sources_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     model: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeachingPlan(Base):
+    """An editable generated teaching plan owned by a teacher."""
+
+    __tablename__ = "teaching_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    topic: Mapped[str] = mapped_column(String(160), nullable=False)
+    duration: Mapped[int] = mapped_column(Integer, nullable=False, server_default="45")
+    objectives: Mapped[str | None] = mapped_column(Text, nullable=True)
+    question_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

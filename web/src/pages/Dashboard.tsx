@@ -1,17 +1,22 @@
 import { useEffect, useState } from "react";
-import { ArrowRightOutlined, BookOutlined, BulbOutlined, MessageOutlined, ReadOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, BookOutlined, BulbOutlined, ClockCircleOutlined, MessageOutlined, ReadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Stats { total: number; qtypes: Record<string, number>; difficulties: Record<string, number>; keypoints: Record<string, number> }
+interface LearningSummary { sessions: number; questions_seen: number; assistant_answers: number; focus_keypoints: { name: string; count: number }[]; recent_sessions: { id: number; title: string; updated_at: string }[] }
 
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState<Stats | null>(null);
+  const [learning, setLearning] = useState<LearningSummary | null>(null);
   const teacher = user?.role === "teacher";
-  useEffect(() => { apiClient.get<Stats>("/api/question-bank/stats").then(r => setStats(r.data)); }, []);
+  useEffect(() => {
+    apiClient.get<Stats>("/api/question-bank/stats").then(r => setStats(r.data));
+    if (!teacher) apiClient.get<LearningSummary>("/api/question-bank/learning-summary").then(r => setLearning(r.data));
+  }, [teacher]);
   const keypoints = Object.entries(stats?.keypoints || {}).slice(0, 8);
   return (
     <div>
@@ -28,16 +33,14 @@ export default function Dashboard() {
         </div>
       </section>
       <section className="mt-7 grid gap-5 md:grid-cols-3">
-        <Stat icon={<BookOutlined />} label="题库总量" value={stats?.total ?? "—"} note="覆盖概率论与数理统计" />
-        <Stat icon={<BulbOutlined />} label="知识点" value={stats ? Object.keys(stats.keypoints).length : "—"} note="支持按考点精准检索" />
-        <Stat icon={<ReadOutlined />} label="题型" value={stats ? Object.keys(stats.qtypes).length : "—"} note={Object.keys(stats?.qtypes || {}).slice(0, 3).join(" · ")} />
+        {teacher ? <><Stat icon={<BookOutlined />} label="题库总量" value={stats?.total ?? "—"} note="覆盖概率论与数理统计" /><Stat icon={<BulbOutlined />} label="知识点" value={stats ? Object.keys(stats.keypoints).length : "—"} note="支持按考点精准检索" /><Stat icon={<ReadOutlined />} label="题型" value={stats ? Object.keys(stats.qtypes).length : "—"} note={Object.keys(stats?.qtypes || {}).slice(0, 3).join(" · ")} /></> : <><Stat icon={<MessageOutlined />} label="学习会话" value={learning?.sessions ?? "—"} note="你的累计答疑会话" /><Stat icon={<BookOutlined />} label="接触题目" value={learning?.questions_seen ?? "—"} note="答疑中引用的不同题目" /><Stat icon={<BulbOutlined />} label="辅导回答" value={learning?.assistant_answers ?? "—"} note="已获得的个性化讲解" /></>}
       </section>
       <section className="mt-7 grid gap-6 lg:grid-cols-[1.25fr_.75fr]">
         <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
-          <div className="mb-5 flex items-center justify-between"><div><h2 className="text-lg font-extrabold text-slate-900">热门知识点</h2><p className="mt-1 text-xs text-slate-400">点击即可查看相关题目</p></div><button onClick={() => navigate("/questions")} className="text-sm font-bold text-teal-700">全部题目</button></div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {keypoints.map(([name, count], i) => <button key={name} onClick={() => navigate(`/questions?keypoint=${encodeURIComponent(name)}`)} className="group flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4 text-left hover:border-teal-200 hover:bg-teal-50"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-xs font-black text-teal-700 shadow-sm">{String(i + 1).padStart(2, "0")}</span><span className="flex-1 text-sm font-bold text-slate-700 group-hover:text-teal-800">{name}</span><span className="text-xs text-slate-400">{count} 题</span></button>)}
-          </div>
+          <div className="mb-5 flex items-center justify-between"><div><h2 className="text-lg font-extrabold text-slate-900">{teacher ? "热门知识点" : "我的学习焦点"}</h2><p className="mt-1 text-xs text-slate-400">{teacher ? "点击即可查看相关题目" : "根据近期答疑引用自动归纳"}</p></div><button onClick={() => navigate("/questions")} className="text-sm font-bold text-teal-700">全部题目</button></div>
+          {!teacher && learning?.focus_keypoints.length === 0 ? <div className="flex min-h-52 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 text-center"><BulbOutlined className="text-2xl text-slate-300" /><p className="mt-3 text-sm font-bold text-slate-600">完成第一次答疑后生成学习焦点</p><button onClick={() => navigate("/tutor")} className="mt-3 text-sm font-bold text-teal-700">现在开始</button></div> : <div className="grid gap-3 sm:grid-cols-2">
+            {(teacher ? keypoints.map(([name, count]) => ({ name, count })) : learning?.focus_keypoints || []).map((item, i) => <button key={item.name} onClick={() => navigate(`/questions?keypoint=${encodeURIComponent(item.name)}`)} className="group flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4 text-left hover:border-teal-200 hover:bg-teal-50"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-xs font-black text-teal-700 shadow-sm">{String(i + 1).padStart(2, "0")}</span><span className="flex-1 text-sm font-bold text-slate-700 group-hover:text-teal-800">{item.name}</span><span className="text-xs text-slate-400">{item.count} 次</span></button>)}
+          </div>}
         </div>
         <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
           <h2 className="text-lg font-extrabold text-slate-900">快速开始</h2>
@@ -45,6 +48,7 @@ export default function Dashboard() {
             <Quick icon={<MessageOutlined />} title="按题号问解析" desc="例如：请讲解 P000001" onClick={() => navigate("/tutor?prompt=请讲解 P000001")} />
             <Quick icon={<BulbOutlined />} title="推荐练习题" desc="按知识点和难度智能推荐" onClick={() => navigate("/tutor?mode=recommend")} />
             {teacher && <Quick icon={<ReadOutlined />} title="设计一节课" desc="从题库选例题生成课堂方案" onClick={() => navigate("/teaching")} />}
+            {!teacher && learning?.recent_sessions.slice(0, 1).map(item => <Quick key={item.id} icon={<ClockCircleOutlined />} title="继续最近学习" desc={item.title} onClick={() => navigate("/tutor")} />)}
           </div>
         </div>
       </section>

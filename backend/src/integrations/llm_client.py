@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from collections.abc import AsyncIterator
 from typing import Any
 
 
@@ -95,6 +96,62 @@ class LLMClient:
         response = await self.complete_response(payload, max_tokens=max_tokens, **kwargs)
         content = response.choices[0].message.content if response.choices else ""
         return content or ""
+
+    async def stream_chat(
+        self,
+        messages: list[ChatMessage],
+        system: str | None = None,
+        max_tokens: int = 32768,
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        """Yield answer text as it arrives from the model."""
+        if self.mock:
+            yield self._mock_response(messages)
+            return
+
+        payload: list[dict[str, Any]] = []
+        if system:
+            payload.append({"role": "system", "content": system})
+        payload.extend({"role": m.role, "content": m.content} for m in messages if m.role != "system")
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[str | BaseException | None] = asyncio.Queue()
+
+        def _produce() -> None:
+            try:
+                params: dict[str, Any] = {
+                    "model": self.model,
+                    "messages": payload,
+                    "stream": True,
+                    "reasoning_effort": DEEPSEEK_REASONING_EFFORT,
+                    "extra_body": {"thinking": {"type": "enabled"}},
+                    "max_tokens": max_tokens,
+                }
+                for key in ("temperature", "top_p", "stop"):
+                    if key in kwargs:
+                        params[key] = kwargs[key]
+                response = self._client().chat.completions.create(**params)
+                for chunk in response:
+                    if not chunk.choices:
+                        continue
+                    content = chunk.choices[0].delta.content
+                    if content:
+                        loop.call_soon_threadsafe(queue.put_nowait, content)
+            except BaseException as exc:  # forwarded to the async consumer
+                loop.call_soon_threadsafe(queue.put_nowait, exc)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        task = asyncio.create_task(asyncio.to_thread(_produce))
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                if isinstance(item, BaseException):
+                    raise item
+                yield item
+        finally:
+            await task
 
     async def chat_json(
         self,

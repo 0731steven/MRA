@@ -77,17 +77,26 @@ def search_questions(
         q_tokens = _tokens(q)
 
         def score(row: dict[str, Any]) -> float:
-            text = _search_text(row)
+            question_text = str(row.get("question") or "").lower()
+            answer_text = f"{row.get('answer') or ''} {row.get('explanation') or ''}".lower()
+            keypoint_text = " ".join(row.get("keypoint") or []).lower()
+            metadata_text = f"{row.get('qtype') or ''} {row.get('hard_level') or ''}".lower()
             value = 0.0
             if q.upper() == str(row.get("ID") or "").upper():
                 value += 1000
-            if q in text:
-                value += 80
-            row_tokens = _tokens(text)
-            value += len(q_tokens & row_tokens) * 3
-            for kp in row.get("keypoint") or []:
-                if q in str(kp).lower():
-                    value += 30
+            if q in question_text:
+                value += 120
+            if q in keypoint_text:
+                value += 160
+            if q in answer_text:
+                value += 20
+            question_overlap = len(q_tokens & _tokens(question_text))
+            keypoint_overlap = len(q_tokens & _tokens(keypoint_text))
+            answer_overlap = len(q_tokens & _tokens(answer_text))
+            metadata_overlap = len(q_tokens & _tokens(metadata_text))
+            value += question_overlap * 8 + keypoint_overlap * 14 + answer_overlap * 1.5 + metadata_overlap * 4
+            if q_tokens:
+                value += (question_overlap + keypoint_overlap) / len(q_tokens) * 25
             return value
 
         min_overlap = max(1, math.ceil(len(q_tokens) * 0.45))
@@ -163,8 +172,15 @@ def retrieve_context(message: str, question_ids: list[str] | None = None, limit:
         key=len,
         reverse=True,
     )
+    difficulty = ""
+    if any(word in normalized_message for word in ("简单", "基础", "入门", "容易", "易题")):
+        difficulty = "易"
+    elif any(word in normalized_message for word in ("困难", "难题", "提高", "拔高", "挑战")):
+        difficulty = "难"
+    elif any(word in normalized_message for word in ("中等", "适中")):
+        difficulty = "中"
     for keypoint in matched_keypoints:
-        matches, _ = search_questions(keypoint, keypoint=keypoint, page_size=limit)
+        matches, _ = search_questions(keypoint, keypoint=keypoint, difficulty=difficulty, page_size=limit)
         for row in matches:
             if row["ID"] not in seen:
                 chosen.append(row)
@@ -172,7 +188,7 @@ def retrieve_context(message: str, question_ids: list[str] | None = None, limit:
             if len(chosen) >= limit:
                 return chosen[:limit]
 
-    matches, _ = search_questions(message, page_size=max(limit * 2, 10))
+    matches, _ = search_questions(message, difficulty=difficulty, page_size=max(limit * 2, 10))
     for row in matches:
         if row["ID"] not in seen:
             chosen.append(row)
@@ -180,3 +196,25 @@ def retrieve_context(message: str, question_ids: list[str] | None = None, limit:
         if len(chosen) >= limit:
             break
     return chosen[:limit]
+
+
+def is_contextual_follow_up(message: str) -> bool:
+    """Return whether a message likely refers to the preceding sourced question."""
+    normalized = re.sub(r"\s+", "", message.lower())
+    if re.search(r"P\d{6}", normalized.upper()):
+        return False
+    follow_up_markers = (
+        "这道题", "这题", "上题", "刚才", "上述", "这里", "这一步", "为什么",
+        "再讲", "没懂", "换种", "继续", "然后呢", "怎么算", "哪里错", "我的思路",
+    )
+    if any(marker in normalized for marker in follow_up_markers):
+        return True
+    # Very short questions without a named bank keypoint are usually continuations.
+    known_keypoints = {
+        str(keypoint).lower()
+        for row in load_questions()
+        for keypoint in (row.get("keypoint") or [])
+        if keypoint
+    }
+    names_topic = any(keypoint in normalized for keypoint in known_keypoints)
+    return len(normalized) <= 12 and not names_topic
