@@ -20,3 +20,9 @@ def test_search_by_id_and_keypoint():
 def test_embedded_question_id_is_retrieved_first():
     rows = retrieve_context("请分步骤讲解 P000001，并指出易错点")
     assert rows[0]["ID"] == "P000001"
+
+
+def test_natural_language_question_resolves_embedded_keypoint():
+    rows = retrieve_context("如何判断一道题该用贝叶斯公式？")
+    assert rows
+    assert all("贝叶斯公式" in row["keypoint"] for row in rows)

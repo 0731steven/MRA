@@ -101,12 +101,13 @@ async def assistant(payload: dict = Body(...), user: User = Depends(get_current_
             max_tokens=4096,
         )
         model = LLMClient().model
-    except RuntimeError as exc:
-        if "DEEPSEEK_API_KEY" not in str(exc):
-            raise
+    except Exception:
+        # Keep tutoring useful when the configured model endpoint, proxy, or API
+        # key is temporarily unavailable.  The fallback is still grounded in the
+        # retrieved question bank and never invents an answer.
         first = context_rows[0]
         answer = (
-            f"当前未配置 DeepSeek API Key，先为你展示题库中的标准解析。\n\n"
+            f"大模型暂时不可用，先为你展示题库中的标准解析。\n\n"
             f"**{first['ID']}**\n\n{first.get('explanation') or first.get('answer')}"
         )
         model = "question-bank-fallback"
@@ -142,13 +143,11 @@ async def teaching_plan(payload: dict = Body(...), user: User = Depends(get_curr
             [ChatMessage("user", prompt)], system=system, max_tokens=6144
         )
         model = LLMClient().model
-    except RuntimeError as exc:
-        if "DEEPSEEK_API_KEY" not in str(exc):
-            raise
+    except Exception:
         ids = "、".join(row["ID"] for row in rows)
         content = (
             f"# {topic or '概率论与数理统计'}教学设计\n\n"
-            f"> 当前未配置 DeepSeek API Key，以下为基础教学框架。\n\n"
+            f"> 大模型暂时不可用，以下为基于题库的基础教学框架。\n\n"
             f"- 课时：{duration} 分钟\n- 例题：{ids}\n- 教学目标：{objectives or '理解核心概念并能完成典型题'}\n"
             "- 教学流程：概念回顾（10 分钟）→ 例题讲解（15 分钟）→ 分组练习（15 分钟）→ 总结（5 分钟）"
         )

@@ -146,6 +146,32 @@ def retrieve_context(message: str, question_ids: list[str] | None = None, limit:
         if row and row["ID"] not in seen:
             chosen.append(row)
             seen.add(row["ID"])
+
+    # Natural-language questions contain a lot of instructional wording such as
+    # “如何判断一道题该用……”.  Searching the whole sentence can dilute the actual
+    # mathematical term.  Resolve explicit question-bank keypoints first, then
+    # use the full sentence for supplementary semantic/lexical matches.
+    normalized_message = re.sub(r"\s+", "", message.lower())
+    known_keypoints = {
+        str(keypoint)
+        for row in load_questions()
+        for keypoint in (row.get("keypoint") or [])
+        if keypoint
+    }
+    matched_keypoints = sorted(
+        (keypoint for keypoint in known_keypoints if keypoint.lower() in normalized_message),
+        key=len,
+        reverse=True,
+    )
+    for keypoint in matched_keypoints:
+        matches, _ = search_questions(keypoint, keypoint=keypoint, page_size=limit)
+        for row in matches:
+            if row["ID"] not in seen:
+                chosen.append(row)
+                seen.add(row["ID"])
+            if len(chosen) >= limit:
+                return chosen[:limit]
+
     matches, _ = search_questions(message, page_size=max(limit * 2, 10))
     for row in matches:
         if row["ID"] not in seen:
