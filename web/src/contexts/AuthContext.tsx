@@ -32,6 +32,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const handleUnauthorized = () => setUser(null);
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
+  }, []);
+
+  useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
       setLoading(false);
@@ -46,8 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function login(token: string): Promise<void> {
     localStorage.setItem("token", token);
-    const res = await apiClient.get<User>("/api/auth/me");
-    setUser(res.data);
+    try { const res = await apiClient.get<User>("/api/auth/me"); setUser(res.data); } catch (error) { localStorage.removeItem("token"); throw error; }
   }
 
   function logout() {
