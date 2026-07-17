@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Skeleton } from "antd";
-import { ArrowRightOutlined, BookOutlined, BulbOutlined, ClockCircleOutlined, ExperimentOutlined, MessageOutlined, ReadOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, BookOutlined, BulbOutlined, ClockCircleOutlined, ExperimentOutlined, MessageOutlined, NodeIndexOutlined, ReadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -38,7 +38,7 @@ export default function Dashboard() {
         <div className="relative max-w-3xl">
           <p className="mb-4 flex items-center gap-2 text-sm font-semibold text-teal-50/90"><span className="h-2 w-2 rounded-full bg-emerald-300" />你好，{user?.name}</p>
           <h1 className="max-w-2xl text-3xl font-black leading-tight lg:text-[40px]">{teacher ? "把知识点组织成一堂好课" : "从一道题开始，真正理解概率统计"}</h1>
-          <p className="mt-4 max-w-xl text-[15px] leading-7 text-teal-50/85">{teacher ? "从专属题库选择例题，快速生成可编辑的课堂教学方案。" : "选择提示、分步引导或完整解析，按照适合你的节奏完成学习闭环。"}</p>
+          <p className="mt-4 max-w-xl text-[15px] leading-7 text-teal-50/85">{teacher ? "从专属题库生成分层学习单、课堂检测与认知断层预警。" : "系统会根据作答、错误类型和提示使用情况，持续更新你的学习路径。"}</p>
           <div className="mt-7 flex flex-wrap gap-3">
             <button onClick={() => navigate(teacher ? "/teaching" : "/tutor")} className="rounded-xl bg-white px-5 py-3 text-sm font-extrabold text-teal-800 transition hover:bg-teal-50 active:translate-y-px">{teacher ? "创建教学设计" : "开始智能答疑"} <ArrowRightOutlined className="ml-2" /></button>
             <button onClick={() => navigate("/questions")} className="rounded-xl border border-white/30 bg-transparent px-5 py-3 text-sm font-bold text-white transition hover:bg-white/10 active:translate-y-px">浏览课程题库</button>
@@ -71,6 +71,7 @@ export default function Dashboard() {
             <Quick icon={<MessageOutlined />} title="按题号问解析" desc="例如：请讲解 P000001" onClick={() => navigate("/tutor?prompt=请讲解 P000001")} />
             <Quick icon={<BulbOutlined />} title="推荐练习题" desc="按知识点和难度智能推荐" onClick={() => navigate("/tutor?mode=recommend")} />
             <Quick icon={<ExperimentOutlined />} title="参数化实验" desc="调节参数并运行概率统计模拟" onClick={() => navigate("/experiments")} />
+            {!teacher && <Quick icon={<NodeIndexOutlined />} title="查看学习路径" desc="掌握度、断层预警与下一步任务" onClick={() => navigate("/learning-path")} />}
             {teacher && <Quick icon={<ReadOutlined />} title="设计一节课" desc="从题库选例题生成课堂方案" onClick={() => navigate("/teaching")} />}
             {!teacher && learning?.recent_sessions.slice(0, 1).map(item => <Quick key={item.id} icon={<ClockCircleOutlined />} title="继续最近学习" desc={item.title} onClick={() => navigate("/tutor")} />)}
           </div>

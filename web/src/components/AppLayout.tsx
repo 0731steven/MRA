@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Avatar, Button, Drawer, Dropdown, Menu, Tooltip } from "antd";
 import type { MenuProps } from "antd";
-import { BookOutlined, ExperimentOutlined, HomeOutlined, LogoutOutlined, MenuOutlined, MessageOutlined, ReadOutlined, RightOutlined, UserOutlined } from "@ant-design/icons";
+import { BookOutlined, ExperimentOutlined, HomeOutlined, LogoutOutlined, MenuOutlined, MessageOutlined, NodeIndexOutlined, ReadOutlined, RightOutlined, UserOutlined } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -18,7 +18,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const teacher = user?.role === "teacher";
-  const nav = teacher ? [...items, { path: "/teaching", label: "教学设计", shortLabel: "教学", icon: <ReadOutlined /> }] : items;
+  const nav = teacher
+    ? [...items, { path: "/teaching", label: "分层教学包", shortLabel: "教学", icon: <ReadOutlined /> }]
+    : [...items, { path: "/learning-path", label: "学习路径", shortLabel: "路径", icon: <NodeIndexOutlined /> }];
   const current = nav.find(item => location.pathname.startsWith(item.path)) || nav[0];
   const menuItems: MenuProps["items"] = nav.map(item => ({ key: item.path, icon: item.icon, label: item.label }));
   const accountItems: MenuProps["items"] = [

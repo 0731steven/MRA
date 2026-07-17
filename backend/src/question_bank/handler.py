@@ -15,11 +15,18 @@ from ..db.models import ChatMessage as StoredChatMessage
 from ..db.models import ChatSession, ExperimentRecord, QuestionAttempt, TeachingPlan, User
 from ..db.session import get_db
 from ..integrations.llm_client import ChatMessage, LLMClient
+from .analytics import (
+    build_learning_profile,
+    build_teaching_insights,
+    experiment_catalog,
+    select_layered_questions,
+)
 from .service import (
     bank_stats,
     compact_question,
     get_question,
     is_contextual_follow_up,
+    load_questions,
     retrieve_context,
     search_questions,
 )
@@ -87,6 +94,26 @@ def _tutor_system(user: User, guidance_mode: str) -> str:
 
 def _sources_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [compact_question(row, include_answer=False) for row in rows]
+
+
+def _attempt_analytics_payload(attempt: QuestionAttempt) -> dict[str, Any]:
+    return {
+        "question_id": attempt.question_id,
+        "verdict": attempt.verdict,
+        "error_type": attempt.error_type,
+        "hint_count": attempt.hint_count,
+        "attempt_no": attempt.attempt_no,
+        "created_at": attempt.created_at.isoformat() if attempt.created_at else None,
+    }
+
+
+def _layer_payload(question_ids: list[str]) -> dict[str, list[str]]:
+    layers = {"易": [], "中": [], "难": []}
+    for question_id in question_ids:
+        row = get_question(question_id)
+        if row and row.get("hard_level") in layers:
+            layers[str(row["hard_level"])].append(question_id)
+    return layers
 
 
 async def _owned_session(db: AsyncSession, session_id: int, user_id: int) -> ChatSession:
@@ -239,6 +266,56 @@ async def learning_summary(
         ],
         "recent_sessions": [_session_payload(item) for item in sessions[:5]],
     }
+
+
+@router.get("/question-bank/learning-profile")
+async def learning_profile(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    attempts = (
+        await db.execute(
+            select(QuestionAttempt)
+            .where(QuestionAttempt.user_id == user.id)
+            .order_by(QuestionAttempt.id.desc())
+            .limit(500)
+        )
+    ).scalars().all()
+    return build_learning_profile(
+        load_questions(),
+        [_attempt_analytics_payload(item) for item in attempts],
+    )
+
+
+@router.get("/question-bank/teaching-insights")
+async def teaching_insights(
+    topic: str = Query(""),
+    question_ids: str = Query(""),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not _is_teacher(user):
+        raise HTTPException(status_code=403, detail="仅教师可查看认知断层预警")
+    explicit_ids = [item.strip().upper() for item in question_ids.split(",") if item.strip()]
+    retrieved = retrieve_context(topic or " ".join(explicit_ids), explicit_ids, limit=30)
+    rows = select_layered_questions(retrieved, limit=12)
+    if not rows:
+        raise HTTPException(status_code=400, detail="请提供教学主题或题号")
+    attempts = (
+        await db.execute(
+            select(QuestionAttempt).order_by(QuestionAttempt.id.desc()).limit(2000)
+        )
+    ).scalars().all()
+    return {
+        "topic": topic or "根据所选题目归纳",
+        "question_ids": [row["ID"] for row in rows],
+        **build_teaching_insights(rows, [_attempt_analytics_payload(item) for item in attempts]),
+    }
+
+
+@router.get("/question-bank/experiments/catalog")
+async def experiments_catalog(_user: User = Depends(get_current_user)):
+    return experiment_catalog(load_questions())
 
 
 @router.get("/question-bank/questions")
@@ -706,6 +783,7 @@ async def list_teaching_plans(
             "topic": item.topic,
             "duration": item.duration,
             "question_ids": json.loads(item.question_ids_json or "[]"),
+            "layers": _layer_payload(json.loads(item.question_ids_json or "[]")),
             "content": item.content,
             "model": item.model,
             "created_at": item.created_at.isoformat() if item.created_at else None,
@@ -769,13 +847,26 @@ async def teaching_plan(
     question_ids = [str(item) for item in payload.get("question_ids") or []]
     objectives = str(payload.get("objectives") or "").strip()
     duration = int(payload.get("duration") or 45)
-    rows = retrieve_context(topic or " ".join(question_ids), question_ids, limit=10)
+    retrieved = retrieve_context(topic or " ".join(question_ids), question_ids, limit=30)
+    explicit_rows = [row for question_id in question_ids if (row := get_question(question_id))]
+    rows = []
+    seen_ids: set[str] = set()
+    for row in [*explicit_rows, *select_layered_questions(retrieved, limit=12)]:
+        if row["ID"] not in seen_ids:
+            rows.append(row)
+            seen_ids.add(row["ID"])
+        if len(rows) >= 12:
+            break
     if not rows:
         raise HTTPException(status_code=400, detail="请填写教学主题或选择题目")
     system = (
         "你是大学概率论与数理统计课程的教学设计专家。仅依据提供的题库题目设计课堂，"
-        "输出 Markdown，包含：教学目标、重难点、时间分配、导入、概念讲授、例题互动、分层练习、"
-        "易错点诊断、课堂小结、课后任务。所有使用的题目必须标明题号，不得虚构题目。"
+        "输出一份可直接使用的分层教学包，而不是只有教学流程。Markdown 必须依次包含："
+        "一、教学诊断与可测量目标；二、时间分配与课堂流程；三、教师讲授稿与关键追问；"
+        "四、基础层学习单（易题）；五、提升层练习单（中题）；六、拓展层探究任务（难题或实验）；"
+        "七、课堂检测与评分要点；八、认知断层预警（前置知识、可观察表现、干预建议）；"
+        "九、答案与讲评建议；十、课后个性化任务。每层说明适用学生、达标标准和升级条件。"
+        "所有使用的题目必须标明题号和难度，不得虚构题目、答案或数据。"
     )
     prompt = (
         f"主题：{topic or '根据所选题目归纳'}\n课时：{duration} 分钟\n教师补充目标：{objectives or '无'}\n\n"
@@ -789,10 +880,13 @@ async def teaching_plan(
     except Exception:
         ids = "、".join(row["ID"] for row in rows)
         content = (
-            f"# {topic or '概率论与数理统计'}教学设计\n\n"
+            f"# {topic or '概率论与数理统计'}分层教学包\n\n"
             f"> 大模型暂时不可用，以下为基于题库的基础教学框架。\n\n"
-            f"- 课时：{duration} 分钟\n- 例题：{ids}\n- 教学目标：{objectives or '理解核心概念并能完成典型题'}\n"
-            "- 教学流程：概念回顾（10 分钟）→ 例题讲解（15 分钟）→ 分组练习（15 分钟）→ 总结（5 分钟）"
+            f"- 课时：{duration} 分钟\n- 例题：{ids}\n- 教学目标：{objectives or '理解核心概念并能完成典型题'}\n\n"
+            "## 教学诊断与课堂流程\n\n概念回顾（10 分钟）→ 例题互动（15 分钟）→ 分层练习（15 分钟）→ 出门检测（5 分钟）。\n\n"
+            "## 基础层学习单\n\n完成易题并能口述公式使用条件。\n\n## 提升层练习单\n\n完成中等题并解释关键推理。\n\n"
+            "## 拓展层探究任务\n\n完成难题或参数实验，比较条件变化对结论的影响。\n\n"
+            "## 认知断层预警\n\n观察概念混淆、条件遗漏与公式选择错误；发现连续错误时先回补前置知识，再重新检测。"
         )
         model = "question-bank-fallback"
     selected_ids = [row["ID"] for row in rows]
@@ -812,7 +906,11 @@ async def teaching_plan(
     return {
         "id": plan.id,
         "title": plan.title,
+        "topic": plan.topic,
+        "duration": plan.duration,
         "content": content,
         "question_ids": selected_ids,
+        "layers": _layer_payload(selected_ids),
+        "insights": build_teaching_insights(rows, []),
         "model": model,
     }

@@ -56,19 +56,19 @@ export default function LoginPage() {
         </div>
       </header>
       <main className="mx-auto grid min-h-[calc(100vh-128px)] max-w-7xl items-center gap-8 px-6 py-8 lg:grid-cols-[1.1fr_0.8fr] lg:px-10">
-        <section className="rounded-2xl bg-slate-950 p-8 text-white lg:p-12">
-          <p className="mb-4 text-sm font-bold text-teal-300">为大学概率统计课程而设计</p>
+        <section className="rounded-2xl bg-teal-700 p-8 text-white lg:p-12">
+          <p className="mb-4 text-sm font-bold text-teal-100">为大学概率统计课程而设计</p>
           <h1 className="max-w-xl text-4xl font-black leading-[1.2] tracking-tight text-white lg:text-5xl">从题库出发，<br />把解题与教学讲清楚</h1>
-          <p className="mt-6 max-w-xl text-base leading-8 text-slate-300">面向大学概率论与数理统计课程，为学生提供循序渐进的题目辅导，也为教师提供可编辑、可保存的课堂教学设计。</p>
-          <div className="mt-9 max-w-xl divide-y divide-slate-700 border-y border-slate-700">
+          <p className="mt-6 max-w-xl text-base leading-8 text-teal-50">面向大学概率论与数理统计课程，为学生提供循序渐进的题目辅导，也为教师提供可编辑、可保存的课堂教学设计。</p>
+          <div className="mt-9 max-w-xl divide-y divide-teal-600 border-y border-teal-600">
             <Feature title="专属题库" detail="1007 道题及标准解析" icon={<DatabaseOutlined />} />
             <Feature title="分步辅导" detail="提示、检查与完整讲解" icon={<CheckCircleOutlined />} />
             <Feature title="教学设计" detail="生成、编辑与历史保存" icon={<ReadOutlined />} />
           </div>
           <div className="mt-7">
-            <p className="text-sm font-bold text-teal-300">完整教学闭环</p>
-            <ol className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-slate-700 sm:grid-cols-4">
-              {['理解概念', '尝试作答', '获得反馈', '实验验证'].map((item, index) => <li key={item} className="bg-slate-900 p-3"><span className="text-sm font-black text-teal-300">{index + 1}</span><span className="mt-1 block text-sm font-bold text-white">{item}</span></li>)}
+            <p className="text-sm font-bold text-teal-100">完整教学闭环</p>
+            <ol className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-teal-600 sm:grid-cols-4">
+              {['理解概念', '尝试作答', '获得反馈', '实验验证'].map((item, index) => <li key={item} className="bg-teal-800 p-3"><span className="text-sm font-black text-teal-200">{index + 1}</span><span className="mt-1 block text-sm font-bold text-white">{item}</span></li>)}
             </ol>
           </div>
         </section>
@@ -110,5 +110,5 @@ export default function LoginPage() {
 }
 
 function Feature({ title, detail, icon }: { title: string; detail: string; icon: React.ReactNode }) {
-  return <div className="flex items-center gap-4 py-4"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-900 text-lg text-teal-200">{icon}</span><span><h3 className="text-sm font-extrabold text-white">{title}</h3><p className="mt-0.5 text-sm text-slate-300">{detail}</p></span></div>;
+  return <div className="flex items-center gap-4 py-4"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-600 text-lg text-white">{icon}</span><span><h3 className="text-sm font-extrabold text-white">{title}</h3><p className="mt-0.5 text-sm text-teal-50">{detail}</p></span></div>;
 }

@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, Input, Slider, Tag, message } from "antd";
 import { ExperimentOutlined, PlayCircleOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
 import { apiClient } from "@/api/client";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 type Params = Record<string, number>;
 type Point = { x: number; y: number; label?: string };
 type Experiment = { id: string; title: string; chapter: string; description: string; question: string; defaults: Params };
+type CatalogItem = { experiment_id: string; keypoints: string[]; question_ids: string[] };
 
 const experiments: Experiment[] = [
   { id: "coin", title: "大数定律：抛硬币", chapter: "概率基础", description: "观察试验次数增加时，正面频率如何靠近理论概率。", question: "试验次数扩大10倍后，频率波动有什么变化？", defaults: { trials: 200, p: 0.5 } },
@@ -19,13 +21,20 @@ const experiments: Experiment[] = [
 ];
 
 export default function ExperimentLab() {
-  const [activeId, setActiveId] = useState("coin");
+  const navigate = useNavigate();
+  const [search] = useSearchParams();
+  const requestedId = search.get("id") || "coin";
+  const [activeId, setActiveId] = useState(experiments.some(item => item.id === requestedId) ? requestedId : "coin");
   const active = experiments.find(item => item.id === activeId)!;
   const [params, setParams] = useState<Params>(active.defaults);
   const [seed, setSeed] = useState(1);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const result = useMemo(() => calculate(activeId, params, seed), [activeId, params, seed]);
+  const related = catalog.find(item => item.experiment_id === activeId);
+
+  useEffect(() => { apiClient.get<CatalogItem[]>("/api/question-bank/experiments/catalog").then(response => setCatalog(response.data)).catch(() => setCatalog([])); }, []);
 
   function choose(experiment: Experiment) { setActiveId(experiment.id); setParams(experiment.defaults); setSeed(value => value + 1); }
   function update(name: string, value: number) { setParams(current => ({ ...current, [name]: value })); }
@@ -37,6 +46,7 @@ export default function ExperimentLab() {
       <Controls id={activeId} params={params} update={update} />
       <div className="mt-6 rounded-2xl bg-slate-50 p-4 lg:p-6"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-bold text-slate-500">当前观察</p><p className="mt-1 text-lg font-black text-slate-900">{result.summary}</p></div><Button type="primary" icon={<PlayCircleOutlined />} onClick={() => setSeed(value => value + 1)}>重新运行模拟</Button></div>{activeId === "montecarlo" ? <Scatter points={result.points} /> : <Chart points={result.points} bars={result.bars} reference={result.reference} />}</div>
       <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950"><label htmlFor="experiment-observation" className="text-sm font-bold text-amber-800">探究问题</label><p className="mt-2 text-sm leading-6">{active.question}</p><Input.TextArea id="experiment-observation" value={notes[activeId] || ""} onChange={event => setNotes(current => ({ ...current, [activeId]: event.target.value }))} className="mt-4" rows={3} maxLength={3000} showCount placeholder="记录你的观察和结论……" /><div className="mt-3 flex justify-end"><Button icon={<SaveOutlined />} loading={saving} onClick={saveRun}>保存本次实验记录</Button></div></div>
+      {related && <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5"><div className="min-w-0 flex-1"><p className="text-sm font-extrabold text-slate-800">把实验结论带回题库验证</p><div className="mt-2 flex flex-wrap gap-2">{related.keypoints.map(item => <Tag key={item} color="cyan">{item}</Tag>)}</div></div><div className="flex flex-wrap gap-2">{related.question_ids.map(id => <Button key={id} onClick={() => navigate(`/questions?query=${id}`)}>{id}</Button>)}</div></div>}
     </section>
   </div></div>;
 }
