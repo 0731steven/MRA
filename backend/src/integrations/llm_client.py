@@ -15,6 +15,7 @@ from typing import Any
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
 DEEPSEEK_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "high")
+DEEPSEEK_USE_ENV_PROXY = os.environ.get("DEEPSEEK_USE_ENV_PROXY", "false").lower() == "true"
 
 
 class ChatMessage:
@@ -37,12 +38,20 @@ class LLMClient:
         self.provider = "mock" if self.mock else "deepseek"
 
     def _client(self):
-        from openai import OpenAI
+        from openai import DefaultHttpxClient, OpenAI
 
         api_key = os.environ.get("DEEPSEEK_API_KEY")
         if not api_key:
             raise RuntimeError("DEEPSEEK_API_KEY 未配置，请在 backend/.env 中设置")
-        return OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL)
+        # Do not inherit stale system proxy variables by default. This keeps the
+        # teaching assistant available when a local proxy/VPN is switched off.
+        # Deployments that intentionally rely on environment proxies can opt in.
+        http_client = DefaultHttpxClient(trust_env=DEEPSEEK_USE_ENV_PROXY)
+        return OpenAI(
+            api_key=api_key,
+            base_url=DEEPSEEK_BASE_URL,
+            http_client=http_client,
+        )
 
     async def complete_response(
         self,
