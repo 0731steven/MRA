@@ -21,9 +21,10 @@ def upgrade() -> None:
         sa.Column("teacher_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("name", sa.String(160), nullable=False),
         sa.Column("course_name", sa.String(160), nullable=False, server_default="概率论与数理统计"),
-        sa.Column("join_code", sa.String(12), nullable=False, unique=True),
+        sa.Column("join_code", sa.String(12), nullable=False),
         sa.Column("status", sa.String(24), nullable=False, server_default="active"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.UniqueConstraint("join_code", name="classrooms_join_code_key"),
     )
     op.create_index("ix_classrooms_teacher_id", "classrooms", ["teacher_id"])
     op.create_index("ix_classrooms_join_code", "classrooms", ["join_code"], unique=True)

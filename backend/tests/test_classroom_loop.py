@@ -1,14 +1,24 @@
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from src.auth.handler import create_token
 from src.classroom.analytics import build_classroom_radar, suggest_intervention_questions
-from src.db.models import User
+from src.db.models import Classroom, User
 from src.db.session import Base, get_db
 from src.integrations.llm_client import LLMClient
 from src.main import app
 from src.question_bank.service import get_question, load_questions
+
+
+def test_classroom_join_code_metadata_matches_postgres_migration():
+    constraints = {
+        constraint.name: tuple(column.name for column in constraint.columns)
+        for constraint in Classroom.__table__.constraints
+        if isinstance(constraint, UniqueConstraint)
+    }
+    assert constraints["classrooms_join_code_key"] == ("join_code",)
 
 
 @pytest_asyncio.fixture

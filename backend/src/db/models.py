@@ -78,6 +78,11 @@ class Classroom(Base):
     """A teacher-owned course cohort joined with a short code."""
 
     __tablename__ = "classrooms"
+    # `index=True, unique=True` is represented by SQLAlchemy as a unique
+    # Index. The migration also creates PostgreSQL's column-level unique
+    # constraint, so declare it explicitly to keep Alembic autogenerate in
+    # sync with the migrated schema.
+    __table_args__ = (UniqueConstraint("join_code", name="classrooms_join_code_key"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     teacher_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
