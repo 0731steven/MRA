@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Avatar, Button, Drawer, Dropdown, Menu, Tooltip } from "antd";
 import type { MenuProps } from "antd";
-import { BookOutlined, ExperimentOutlined, HomeOutlined, LogoutOutlined, MenuOutlined, MessageOutlined, NodeIndexOutlined, ReadOutlined, RightOutlined, UserOutlined } from "@ant-design/icons";
+import { BookOutlined, CheckSquareOutlined, ExperimentOutlined, HomeOutlined, LogoutOutlined, MenuOutlined, MessageOutlined, NodeIndexOutlined, RadarChartOutlined, ReadOutlined, RightOutlined, UserOutlined } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -18,9 +18,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const teacher = user?.role === "teacher";
+  const classroomItem = { path: "/classrooms", label: "班级认知雷达", shortLabel: "班级", icon: <RadarChartOutlined /> };
+  const taskItem = { path: "/tasks", label: "我的任务", shortLabel: "任务", icon: <CheckSquareOutlined /> };
+  const teachingItem = { path: "/teaching", label: "分层教学包", shortLabel: "教学", icon: <ReadOutlined /> };
+  const pathItem = { path: "/learning-path", label: "学习路径", shortLabel: "路径", icon: <NodeIndexOutlined /> };
   const nav = teacher
-    ? [...items, { path: "/teaching", label: "分层教学包", shortLabel: "教学", icon: <ReadOutlined /> }]
-    : [...items, { path: "/learning-path", label: "学习路径", shortLabel: "路径", icon: <NodeIndexOutlined /> }];
+    ? [items[0], classroomItem, teachingItem, ...items.slice(1)]
+    : [items[0], taskItem, ...items.slice(1), pathItem];
+  const mobileNav = teacher
+    ? [items[0], classroomItem, teachingItem, items[1], items[2]]
+    : [items[0], taskItem, items[1], items[2], pathItem];
   const current = nav.find(item => location.pathname.startsWith(item.path)) || nav[0];
   const menuItems: MenuProps["items"] = nav.map(item => ({ key: item.path, icon: item.icon, label: item.label }));
   const accountItems: MenuProps["items"] = [
@@ -38,7 +45,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <button onClick={() => navigate("/dashboard")} className="brand-button" aria-label="返回学习工作台">
       <span className="brand-mark">π</span>
       <span className="min-w-0 text-left">
-        <span className="block truncate text-[15px] font-extrabold tracking-tight text-slate-900">概率统计教学助手</span>
+        <span className="block truncate text-base font-bold tracking-tight text-slate-900">概率统计教学助手</span>
         <span className="block text-sm font-semibold text-slate-500">概率论与数理统计</span>
       </span>
     </button>
@@ -58,7 +65,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <div className="mt-auto p-4">
           <div className="rounded-2xl bg-teal-700 p-4 text-white">
             <p className="text-sm font-bold text-teal-50">学习小提示</p>
-            <p className="mt-2 text-sm leading-5 text-teal-50/85">先尝试自己作答，再选择提示，学习效果会更好。</p>
+            <p className="mt-2 text-sm font-medium leading-6 tracking-[.01em] text-teal-50">先尝试自己作答，再选择提示，学习效果会更好。</p>
             <button onClick={() => navigate("/tutor")} className="mt-3 flex items-center gap-1 text-sm font-bold text-white">开始提问 <RightOutlined className="text-xs" /></button>
           </div>
         </div>
@@ -67,10 +74,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <div className="app-workspace">
         <header className="app-header">
           <div className="flex min-w-0 items-center gap-3">
-            <Button className="!flex lg:!hidden" type="text" icon={<MenuOutlined />} onClick={() => setMobileOpen(true)} aria-label="打开导航" />
+            <Button className="!flex xl:!hidden" type="text" icon={<MenuOutlined />} onClick={() => setMobileOpen(true)} aria-label="打开导航" />
             <div className="min-w-0">
-              <div className="truncate text-xl font-black text-slate-900">{current.label}</div>
-              <div className="hidden text-sm text-slate-500 sm:block">{teacher ? "教师工作空间" : "学生学习空间"} · 概率论与数理统计</div>
+              <div className="truncate text-base font-semibold text-slate-800">{teacher ? "教师工作空间" : "学生学习空间"}</div>
+              <div className="hidden text-sm text-slate-600 sm:block">{current.label} · 概率论与数理统计</div>
             </div>
           </div>
           <Dropdown
@@ -88,7 +95,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </div>
 
       <nav className="mobile-tabbar" aria-label="主导航">
-        {nav.map(item => { const active = location.pathname.startsWith(item.path); return <Tooltip key={item.path} title={item.label}><button onClick={() => navigate(item.path)} className={active ? "active" : ""} aria-current={active ? "page" : undefined}>{item.icon}<span>{item.shortLabel}</span></button></Tooltip>; })}
+        {mobileNav.map(item => { const active = location.pathname.startsWith(item.path); return <Tooltip key={item.path} title={item.label}><button onClick={() => navigate(item.path)} className={active ? "active" : ""} aria-current={active ? "page" : undefined}>{item.icon}<span>{item.shortLabel}</span></button></Tooltip>; })}
       </nav>
 
       <Drawer open={mobileOpen} onClose={() => setMobileOpen(false)} placement="left" width={286} title="课程导航" styles={{ body: { padding: 0 } }}>

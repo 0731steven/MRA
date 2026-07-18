@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test:math": "node --experimental-strip-types scripts/test-math-markdown.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

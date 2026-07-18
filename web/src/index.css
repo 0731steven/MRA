@@ -15,10 +15,13 @@ body {
   min-height: 100vh;
   background: #f4f7f6;
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
 }
 
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
   outline: 3px solid rgba(20, 184, 166, .24);
   outline-offset: 2px;
@@ -66,7 +69,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   padding: 0 20px;
 }
 .app-content { width: 100%; max-width: 1540px; margin: 0 auto; padding: 24px 20px 104px; }
-.brand-button { display: flex; width: 100%; align-items: center; gap: 12px; border: 0; background: transparent; padding: 0; }
+.brand-button { display: flex; width: 100%; min-height: 44px; align-items: center; gap: 12px; border: 0; background: transparent; padding: 0; }
 .brand-mark {
   display: flex;
   width: 42px;
@@ -77,19 +80,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   border-radius: 14px;
   background: linear-gradient(145deg, #115e59, #10b981);
   color: white;
-  font-size: 21px;
+  font-size: 1.25rem;
   font-weight: 900;
   box-shadow: 0 9px 22px rgba(15,118,110,.2);
 }
 .app-menu { border-inline-end: 0 !important; padding: 0 12px; background: transparent !important; }
-.app-menu .ant-menu-item { margin-block: 4px; font-weight: 650; color: #64748b; }
+.app-menu .ant-menu-item { margin-block: 4px; font-weight: 600; color: #64748b; }
 .app-menu .ant-menu-item-selected { color: #0f766e; }
 .app-sidebar .brand-button .text-slate-900 { color: #fff !important; }
 .app-sidebar .brand-button .text-slate-500 { color: #94a3b8 !important; }
 .app-sidebar .app-menu .ant-menu-item { color: #cbd5e1; }
 .app-sidebar .app-menu .ant-menu-item:hover { background: #1e293b !important; color: #fff !important; }
 .app-sidebar .app-menu .ant-menu-item-selected { background: #0f766e !important; color: #fff !important; }
-.app-sidebar > p { color: #64748b !important; }
+.app-sidebar > p { color: #cbd5e1 !important; }
 .account-button { display: flex; align-items: center; gap: 10px; border: 0; border-radius: 14px; background: transparent; padding: 6px 8px; transition: background .2s ease; }
 .account-button:hover { background: #f1f5f4; }
 .mobile-tabbar {
@@ -108,8 +111,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   padding: 6px;
   box-shadow: 0 6px 8px rgba(15,23,42,.1);
 }
-.mobile-tabbar button { display: flex; min-width: 54px; flex-direction: column; align-items: center; gap: 4px; border: 0; border-radius: 14px; background: transparent; padding: 7px 9px; color: #94a3b8; font-size: 17px; }
-.mobile-tabbar button span { font-size: 10px; font-weight: 700; }
+.mobile-tabbar button { display: flex; min-width: 54px; flex-direction: column; align-items: center; gap: 4px; border: 0; border-radius: 14px; background: transparent; padding: 7px 9px; color: #64748b; font-size: 1.125rem; }
+.mobile-tabbar button span { font-size: .75rem; font-weight: 700; }
 .mobile-tabbar button.active { background: #ecfdf5; color: #0f766e; }
 
 .tutor-sidebar { background: #0f172a; border-color: #1e293b; }
@@ -123,6 +126,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .account-button { min-width: 44px; min-height: 44px; }
   .mobile-tabbar button { min-width: 56px; min-height: 50px; }
   .app-content button:not(.ant-btn) { min-height: 44px; }
+  .app-content .ant-btn,
+  .app-content .ant-input,
+  .app-content .ant-input-number,
+  .app-content .ant-select-selector { min-height: 44px; }
   .formula-toolbar .ant-btn { min-width: 44px; min-height: 44px; }
 }
 
@@ -140,10 +147,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 @media (min-width: 1024px) {
+  .app-header { padding: 0 32px; }
+  .app-content { padding: 32px 32px 48px; }
+}
+
+@media (min-width: 1280px) {
   .app-sidebar { display: flex; }
   .app-workspace { margin-left: 252px; }
-  .app-header { padding: 0 32px; }
-  .app-content { padding: 30px 32px 48px; }
   .mobile-tabbar { display: none; }
 }
 
@@ -185,10 +195,40 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   font-weight: 800;
 }
 
+.teaching-markdown table {
+  width: 100%;
+  margin: 1rem 0;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.teaching-markdown th,
+.teaching-markdown td {
+  min-width: 8rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  text-align: left;
+  vertical-align: top;
+}
+
+.teaching-markdown th {
+  background: #f1f5f9;
+  color: #334155;
+  font-weight: 800;
+}
+
 .katex-display {
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0.5rem 0;
+}
+
+.katex-error,
+.math-render-fallback {
+  color: inherit !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .tutor-markdown,
@@ -199,4 +239,5 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .question-markdown > :where(p, ul, ol),
 .teaching-markdown > :where(p, ul, ol) { max-width: 72ch; text-wrap: pretty; }
 
-h1, h2, h3 { text-wrap: balance; letter-spacing: -.025em; }
+h1 { text-wrap: balance; letter-spacing: -.015em; }
+h2, h3 { text-wrap: balance; letter-spacing: normal; }

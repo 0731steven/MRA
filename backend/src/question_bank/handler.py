@@ -12,7 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.handler import get_current_user
 from ..db.models import ChatMessage as StoredChatMessage
-from ..db.models import ChatSession, ExperimentRecord, QuestionAttempt, TeachingPlan, User
+from ..db.models import (
+    AssignmentItem,
+    AssignmentRecipient,
+    ChatSession,
+    Classroom,
+    ExperimentRecord,
+    LearningAssignment,
+    QuestionAttempt,
+    TeachingPlan,
+    User,
+)
 from ..db.session import get_db
 from ..integrations.llm_client import ChatMessage, LLMClient
 from .analytics import (
@@ -30,6 +40,7 @@ from .service import (
     retrieve_context,
     search_questions,
 )
+from .teaching_package import LEARNER_PROFILES, LESSON_TYPES, build_teaching_package
 
 
 router = APIRouter()
@@ -40,6 +51,11 @@ GUIDANCE_MODES = {
     "step": "采用分步引导。每次聚焦一个推理阶段，解释本阶段目标并提出一个让学生继续作答的问题。",
     "full": "给出完整但清晰的解析：考点、分步推导、易错点、结论和一道可继续练习的建议。",
 }
+
+MATH_MARKDOWN_RULE = (
+    "所有数学公式必须使用 Markdown 数学分隔符：行内公式用 $...$，独立公式用 $$...$$；"
+    "不要使用 \\(...\\) 或 \\[...\\]。"
+)
 
 
 def _is_teacher(user: User) -> bool:
@@ -84,7 +100,8 @@ def _message_payload(message: StoredChatMessage) -> dict[str, Any]:
 def _tutor_system(user: User, guidance_mode: str) -> str:
     system = (
         "你是概率论与数理统计教学助手。必须以给定题库资料为核心作答，不得虚构题号、题干、答案或结论。"
-        "先识别考点，使用 Markdown LaTeX 表示公式，引用题库内容时标明题号。资料不足时明确说明。"
+        f"先识别考点，使用 Markdown LaTeX 表示公式。{MATH_MARKDOWN_RULE}"
+        "引用题库内容时标明题号。资料不足时明确说明。"
         f"当前辅导方式：{GUIDANCE_MODES[guidance_mode]}"
     )
     if _is_teacher(user):
@@ -114,6 +131,41 @@ def _layer_payload(question_ids: list[str]) -> dict[str, list[str]]:
         if row and row.get("hard_level") in layers:
             layers[str(row["hard_level"])].append(question_id)
     return layers
+
+
+def _stored_plan_payload(plan: TeachingPlan) -> dict[str, Any]:
+    question_ids = json.loads(plan.question_ids_json or "[]")
+    rows = [row for question_id in question_ids if (row := get_question(question_id))]
+    generated = build_teaching_package(
+        topic=plan.topic,
+        duration=plan.duration,
+        objectives=plan.objectives or "",
+        rows=rows,
+        insights=build_teaching_insights(rows, []),
+        lesson_type=plan.lesson_type or "concept",
+        learner_profile=plan.learner_profile or "mixed",
+    ) if rows else {"manifest": {}, "student_content": ""}
+    try:
+        package = json.loads(plan.package_json) if plan.package_json else generated["manifest"]
+    except (json.JSONDecodeError, TypeError):
+        package = generated["manifest"]
+    return {
+        "id": plan.id,
+        "title": plan.title,
+        "topic": plan.topic,
+        "duration": plan.duration,
+        "classroom_id": plan.classroom_id,
+        "lesson_type": plan.lesson_type or "concept",
+        "learner_profile": plan.learner_profile or "mixed",
+        "question_ids": question_ids,
+        "layers": _layer_payload(question_ids),
+        "content": plan.content,
+        "student_content": plan.student_content or generated["student_content"],
+        "package": package,
+        "model": plan.model,
+        "created_at": plan.created_at.isoformat() if plan.created_at else None,
+        "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
+    }
 
 
 async def _owned_session(db: AsyncSession, session_id: int, user_id: int) -> ChatSession:
@@ -291,6 +343,7 @@ async def learning_profile(
 async def teaching_insights(
     topic: str = Query(""),
     question_ids: str = Query(""),
+    classroom_id: int | None = Query(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -301,11 +354,24 @@ async def teaching_insights(
     rows = select_layered_questions(retrieved, limit=12)
     if not rows:
         raise HTTPException(status_code=400, detail="请提供教学主题或题号")
-    attempts = (
-        await db.execute(
-            select(QuestionAttempt).order_by(QuestionAttempt.id.desc()).limit(2000)
-        )
-    ).scalars().all()
+    attempt_query = (
+        select(QuestionAttempt)
+        .join(LearningAssignment, LearningAssignment.id == QuestionAttempt.assignment_id)
+        .join(Classroom, Classroom.id == LearningAssignment.classroom_id)
+        .where(Classroom.teacher_id == user.id)
+        .order_by(QuestionAttempt.id.desc())
+        .limit(2000)
+    )
+    if classroom_id is not None:
+        classroom = (
+            await db.execute(
+                select(Classroom).where(Classroom.id == classroom_id, Classroom.teacher_id == user.id)
+            )
+        ).scalar_one_or_none()
+        if classroom is None:
+            raise HTTPException(status_code=404, detail="班级不存在或不属于当前教师")
+        attempt_query = attempt_query.where(Classroom.id == classroom_id)
+    attempts = (await db.execute(attempt_query)).scalars().all()
     return {
         "topic": topic or "根据所选题目归纳",
         "question_ids": [row["ID"] for row in rows],
@@ -369,7 +435,7 @@ async def question_hint(
     try:
         hint = await LLMClient(name="answer_hint").chat(
             [ChatMessage("user", prompt)],
-            system="你是启发式概率统计教师，只提供最小必要提示。",
+            system=f"你是启发式概率统计教师，只提供最小必要提示。{MATH_MARKDOWN_RULE}",
             max_tokens=256,
         )
     except Exception:
@@ -396,6 +462,39 @@ async def submit_question_attempt(
         raise HTTPException(status_code=400, detail="手写图片格式无效或超过约 2MB")
     if not answer and not reasoning and not image_name:
         raise HTTPException(status_code=400, detail="请填写答案、描述思路或上传手写过程")
+    assignment_id = None
+    recipient = None
+    if payload.get("assignment_id") is not None:
+        try:
+            assignment_id = int(payload["assignment_id"])
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="任务编号无效") from exc
+        assignment = (
+            await db.execute(
+                select(LearningAssignment).where(
+                    LearningAssignment.id == assignment_id,
+                    LearningAssignment.status == "published",
+                )
+            )
+        ).scalar_one_or_none()
+        recipient = (
+            await db.execute(
+                select(AssignmentRecipient).where(
+                    AssignmentRecipient.assignment_id == assignment_id,
+                    AssignmentRecipient.student_id == user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        assigned_item = (
+            await db.execute(
+                select(AssignmentItem).where(
+                    AssignmentItem.assignment_id == assignment_id,
+                    AssignmentItem.question_id == question_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if assignment is None or recipient is None or assigned_item is None:
+            raise HTTPException(status_code=403, detail="这道题不属于分配给你的当前任务")
     hint_count = max(0, min(int(payload.get("hint_count") or 0), 99))
     input_mode = str(payload.get("input_mode") or "formula")[:24]
     prior_count = (
@@ -417,7 +516,7 @@ async def submit_question_attempt(
     try:
         parsed = await LLMClient(name="answer_diagnostic").chat_json(
             [ChatMessage("user", diagnostic_prompt)],
-            system="你是严谨的概率统计作答诊断教师。只按提供的标准答案评估，不得虚构。",
+            system=f"你是严谨的概率统计作答诊断教师。只按提供的标准答案评估，不得虚构。{MATH_MARKDOWN_RULE}",
             max_tokens=768,
         )
         if isinstance(parsed, dict):
@@ -440,6 +539,7 @@ async def submit_question_attempt(
         error_type = "" if exact else "表达不完整"
     attempt = QuestionAttempt(
         user_id=user.id,
+        assignment_id=assignment_id,
         question_id=question_id,
         input_mode=input_mode,
         answer_text=answer or None,
@@ -455,6 +555,22 @@ async def submit_question_attempt(
     db.add(attempt)
     await db.commit()
     await db.refresh(attempt)
+    assignment_completed = False
+    if assignment_id and recipient:
+        item_count = await db.scalar(
+            select(func.count(AssignmentItem.id)).where(AssignmentItem.assignment_id == assignment_id)
+        )
+        attempted_count = await db.scalar(
+            select(func.count(func.distinct(QuestionAttempt.question_id))).where(
+                QuestionAttempt.assignment_id == assignment_id,
+                QuestionAttempt.user_id == user.id,
+            )
+        )
+        if int(attempted_count or 0) >= int(item_count or 0) > 0:
+            recipient.status = "completed"
+            recipient.completed_at = datetime.now(timezone.utc)
+            await db.commit()
+            assignment_completed = True
     return {
         "id": attempt.id,
         "verdict": verdict,
@@ -462,6 +578,8 @@ async def submit_question_attempt(
         "error_type": error_type or None,
         "attempt_no": attempt.attempt_no,
         "hint_count": hint_count,
+        "assignment_id": assignment_id,
+        "assignment_completed": assignment_completed,
     }
 
 
@@ -482,6 +600,7 @@ async def list_question_attempts(
         {
             "id": item.id,
             "question_id": item.question_id,
+            "assignment_id": item.assignment_id,
             "verdict": item.verdict,
             "error_type": item.error_type,
             "hint_count": item.hint_count,
@@ -776,21 +895,7 @@ async def list_teaching_plans(
             .order_by(TeachingPlan.updated_at.desc(), TeachingPlan.id.desc())
         )
     ).scalars().all()
-    return [
-        {
-            "id": item.id,
-            "title": item.title,
-            "topic": item.topic,
-            "duration": item.duration,
-            "question_ids": json.loads(item.question_ids_json or "[]"),
-            "layers": _layer_payload(json.loads(item.question_ids_json or "[]")),
-            "content": item.content,
-            "model": item.model,
-            "created_at": item.created_at.isoformat() if item.created_at else None,
-            "updated_at": item.updated_at.isoformat() if item.updated_at else None,
-        }
-        for item in plans
-    ]
+    return [_stored_plan_payload(item) for item in plans]
 
 
 @router.put("/question-bank/teaching-plans/{plan_id}")
@@ -844,9 +949,34 @@ async def teaching_plan(
     if not _is_teacher(user):
         raise HTTPException(status_code=403, detail="仅教师可生成教学设计")
     topic = str(payload.get("topic") or "").strip()
-    question_ids = [str(item) for item in payload.get("question_ids") or []]
+    question_ids = [str(item).strip().upper() for item in payload.get("question_ids") or [] if str(item).strip()]
     objectives = str(payload.get("objectives") or "").strip()
-    duration = int(payload.get("duration") or 45)
+    duration = max(15, min(int(payload.get("duration") or 45), 180))
+    lesson_type = str(payload.get("lesson_type") or "concept")
+    learner_profile = str(payload.get("learner_profile") or "mixed")
+    if lesson_type not in LESSON_TYPES:
+        raise HTTPException(status_code=400, detail="课堂类型无效")
+    if learner_profile not in LEARNER_PROFILES:
+        raise HTTPException(status_code=400, detail="学情基线无效")
+    classroom = None
+    classroom_id = payload.get("classroom_id")
+    if classroom_id not in (None, ""):
+        try:
+            classroom_id = int(classroom_id)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="班级编号无效") from exc
+        classroom = (
+            await db.execute(
+                select(Classroom).where(Classroom.id == classroom_id, Classroom.teacher_id == user.id)
+            )
+        ).scalar_one_or_none()
+        if classroom is None:
+            raise HTTPException(status_code=404, detail="班级不存在或不属于当前教师")
+    else:
+        classroom_id = None
+    missing_ids = [question_id for question_id in question_ids if get_question(question_id) is None]
+    if missing_ids:
+        raise HTTPException(status_code=400, detail=f"题库中不存在：{'、'.join(missing_ids[:5])}")
     retrieved = retrieve_context(topic or " ".join(question_ids), question_ids, limit=30)
     explicit_rows = [row for question_id in question_ids if (row := get_question(question_id))]
     rows = []
@@ -859,45 +989,46 @@ async def teaching_plan(
             break
     if not rows:
         raise HTTPException(status_code=400, detail="请填写教学主题或选择题目")
-    system = (
-        "你是大学概率论与数理统计课程的教学设计专家。仅依据提供的题库题目设计课堂，"
-        "输出一份可直接使用的分层教学包，而不是只有教学流程。Markdown 必须依次包含："
-        "一、教学诊断与可测量目标；二、时间分配与课堂流程；三、教师讲授稿与关键追问；"
-        "四、基础层学习单（易题）；五、提升层练习单（中题）；六、拓展层探究任务（难题或实验）；"
-        "七、课堂检测与评分要点；八、认知断层预警（前置知识、可观察表现、干预建议）；"
-        "九、答案与讲评建议；十、课后个性化任务。每层说明适用学生、达标标准和升级条件。"
-        "所有使用的题目必须标明题号和难度，不得虚构题目、答案或数据。"
+    attempts: list[QuestionAttempt] = []
+    if classroom is not None:
+        attempts = (
+            await db.execute(
+                select(QuestionAttempt)
+                .join(LearningAssignment, LearningAssignment.id == QuestionAttempt.assignment_id)
+                .where(LearningAssignment.classroom_id == classroom.id)
+                .order_by(QuestionAttempt.id.desc())
+                .limit(2000)
+            )
+        ).scalars().all()
+    insights = build_teaching_insights(rows, [_attempt_analytics_payload(item) for item in attempts])
+    generated = build_teaching_package(
+        topic=topic or "概率论与数理统计",
+        duration=duration,
+        objectives=objectives,
+        rows=rows,
+        insights=insights,
+        lesson_type=lesson_type,
+        learner_profile=learner_profile,
+        classroom_name=classroom.name if classroom else None,
     )
-    prompt = (
-        f"主题：{topic or '根据所选题目归纳'}\n课时：{duration} 分钟\n教师补充目标：{objectives or '无'}\n\n"
-        f"可用题目：\n{_context_text(rows)}"
-    )
-    try:
-        content = await LLMClient(name="teaching_plan").chat(
-            [ChatMessage("user", prompt)], system=system, max_tokens=6144
-        )
-        model = LLMClient().model
-    except Exception:
-        ids = "、".join(row["ID"] for row in rows)
-        content = (
-            f"# {topic or '概率论与数理统计'}分层教学包\n\n"
-            f"> 大模型暂时不可用，以下为基于题库的基础教学框架。\n\n"
-            f"- 课时：{duration} 分钟\n- 例题：{ids}\n- 教学目标：{objectives or '理解核心概念并能完成典型题'}\n\n"
-            "## 教学诊断与课堂流程\n\n概念回顾（10 分钟）→ 例题互动（15 分钟）→ 分层练习（15 分钟）→ 出门检测（5 分钟）。\n\n"
-            "## 基础层学习单\n\n完成易题并能口述公式使用条件。\n\n## 提升层练习单\n\n完成中等题并解释关键推理。\n\n"
-            "## 拓展层探究任务\n\n完成难题或参数实验，比较条件变化对结论的影响。\n\n"
-            "## 认知断层预警\n\n观察概念混淆、条件遗漏与公式选择错误；发现连续错误时先回补前置知识，再重新检测。"
-        )
-        model = "question-bank-fallback"
+    content = generated["teacher_content"]
+    student_content = generated["student_content"]
+    package = generated["manifest"]
+    model = "curriculum-engine-v2"
     selected_ids = [row["ID"] for row in rows]
     plan = TeachingPlan(
         user_id=user.id,
+        classroom_id=classroom_id,
         title=f"{topic or '概率统计'} · {duration} 分钟",
         topic=topic or "概率论与数理统计",
         duration=duration,
+        lesson_type=lesson_type,
+        learner_profile=learner_profile,
         objectives=objectives or None,
         question_ids_json=json.dumps(selected_ids, ensure_ascii=False),
         content=content,
+        student_content=student_content,
+        package_json=json.dumps(package, ensure_ascii=False),
         model=model,
     )
     db.add(plan)
@@ -908,9 +1039,14 @@ async def teaching_plan(
         "title": plan.title,
         "topic": plan.topic,
         "duration": plan.duration,
+        "classroom_id": plan.classroom_id,
+        "lesson_type": lesson_type,
+        "learner_profile": learner_profile,
         "content": content,
+        "student_content": student_content,
         "question_ids": selected_ids,
         "layers": _layer_payload(selected_ids),
-        "insights": build_teaching_insights(rows, []),
+        "package": package,
+        "insights": insights,
         "model": model,
     }

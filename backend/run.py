@@ -2,10 +2,14 @@
 import asyncio
 import os
 import sys
+from pathlib import Path
+
 import uvicorn
 from dotenv import load_dotenv
 
-load_dotenv()
+BACKEND_DIR = Path(__file__).resolve().parent
+os.chdir(BACKEND_DIR)
+load_dotenv(BACKEND_DIR / ".env")
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())

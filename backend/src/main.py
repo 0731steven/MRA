@@ -11,6 +11,7 @@ from sqlalchemy import text
 from .config import ALLOWED_ORIGINS, IS_PRODUCTION, validate_runtime_config
 from .db import models  # noqa: F401 - register ORM models
 from .db.bootstrap import bootstrap_teacher
+from .db.compat import ensure_local_sqlite_compatibility
 from .db.session import AsyncSessionLocal, Base, engine
 
 
@@ -22,6 +23,7 @@ async def lifespan(_app: FastAPI):
     if not IS_PRODUCTION:
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+            await ensure_local_sqlite_compatibility(connection)
     await bootstrap_teacher()
     yield
     await engine.dispose()
@@ -37,9 +39,11 @@ app.add_middleware(
 )
 
 from .auth.handler import router as auth_router
+from .classroom.handler import router as classroom_router
 from .question_bank.handler import router as question_bank_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(classroom_router, prefix="/api", tags=["classroom"])
 app.include_router(question_bank_router, prefix="/api", tags=["question_bank"])
 
 
