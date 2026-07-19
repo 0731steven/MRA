@@ -2,8 +2,18 @@ import { expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/login");
-  await page.getByRole("button", { name: "开发者一键登录" }).click();
+  await page.getByRole("button", { name: "一键进入本地教师端" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+});
+
+test("recommendation starter switches mode and returns the requested count", async ({ page }) => {
+  await page.goto("/tutor");
+  await page.getByRole("button", { name: "推荐 3 道样本空间的基础题" }).click();
+  await expect(page.getByRole("heading", { name: "题目推荐" })).toBeVisible();
+  await expect(page.getByText("我筛选了 3 道题，并按难度由易到难排列。建议独立作答后再查看解析。"))
+    .toBeVisible();
+  await expect(page.getByRole("button", { name: /第 [123] 题 · P/ })).toHaveCount(3);
+  await expect(page.getByText("回答来源：题库检索")).toBeVisible();
 });
 
 test("mobile routes stay within the viewport and restore scroll", async ({ page }, testInfo) => {
@@ -19,7 +29,7 @@ test("mobile routes stay within the viewport and restore scroll", async ({ page 
   expect(overflowingCards).toBe(0);
 
   await mobileNavigation.getByRole("button", { name: /答疑/ }).click();
-  await expect(page.getByRole("heading", { name: "智能答疑" })).toBeVisible();
+  await expect(page).toHaveURL(/\/tutor$/);
   await expect(page.getByRole("button", { name: "设置" })).toBeVisible();
   await page.getByRole("button", { name: "设置" }).click();
   await expect(page.getByText("答疑设置与历史会话")).toBeVisible();

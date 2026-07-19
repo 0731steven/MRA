@@ -38,6 +38,7 @@ from .service import (
     get_question,
     is_contextual_follow_up,
     load_questions,
+    requested_recommendation_count,
     retrieve_context,
     search_questions,
 )
@@ -52,6 +53,9 @@ GUIDANCE_MODES = {
     "step": "采用分步引导。每次聚焦一个推理阶段，解释本阶段目标并提出一个让学生继续作答的问题。",
     "full": "给出完整但清晰的解析：考点、分步推导、易错点、结论和一道可继续练习的建议。",
 }
+
+ALLOWED_ERROR_TYPES = {"概念混淆", "条件遗漏", "公式选择错误", "计算错误", "表达不完整"}
+DIFFICULTY_ORDER = {"易": 0, "中": 1, "难": 2}
 
 MATH_MARKDOWN_RULE = (
     "所有数学公式必须使用 Markdown 数学分隔符：行内公式用 $...$，独立公式用 $$...$$；"
@@ -154,6 +158,11 @@ def _tutor_system(user: User, guidance_mode: str) -> str:
         "引用题库内容时标明题号。资料不足时明确说明。"
         f"当前辅导方式：{GUIDANCE_MODES[guidance_mode]}"
     )
+    if guidance_mode != "full":
+        system += (
+            "题库资料中的参考答案和解析只用于内部核对；即使用户要求直接给答案，"
+            "也不得复述最终答案、完整数值结论或整段标准解析。"
+        )
     if _is_teacher(user):
         system += "当前用户是教师，可以补充教学目标、课堂提问建议和分层讲解方法。"
     return system
@@ -161,6 +170,60 @@ def _tutor_system(user: User, guidance_mode: str) -> str:
 
 def _sources_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [compact_question(row, include_answer=False) for row in rows]
+
+
+def _ordered_recommendations(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Present practice in a predictable easy-to-hard learning sequence."""
+    return sorted(
+        rows,
+        key=lambda row: (
+            DIFFICULTY_ORDER.get(str(row.get("hard_level") or ""), 99),
+            str(row.get("ID") or ""),
+        ),
+    )
+
+
+def _carried_question_ids(message: str, prior_source_ids: list[str]) -> list[str]:
+    """Carry a small, relevant slice of sources into a contextual follow-up."""
+    unique_ids = list(dict.fromkeys(filter(None, prior_source_ids)))
+    number_map = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8}
+    selected = re.search(r"第\s*([1-8一二两三四五六七八])\s*(?:道|题)", message)
+    if selected:
+        token = selected.group(1)
+        position = int(token) if token.isdigit() else number_map[token]
+        return unique_ids[position - 1 : position]
+    # Carrying all six sources from a previous recommendation overwhelms a
+    # short follow-up and makes the tutor more likely to mix exercises.
+    return unique_ids[:3]
+
+
+def _grounded_tutor_fallback(row: dict[str, Any], guidance_mode: str) -> str:
+    """Return a bank-grounded fallback that respects the requested pedagogy."""
+    question_id = str(row.get("ID") or "这道题")
+    keypoints = "、".join(row.get("keypoint") or []) or "相关概率统计知识点"
+    if guidance_mode == "hint":
+        return (
+            f"模型暂时不可用，但我不会直接公布 {question_id} 的答案。"
+            f"先给你一个最小提示：本题涉及“{keypoints}”。请先写出已知量、所求量，以及你准备使用的第一个公式。"
+        )
+    if guidance_mode == "check":
+        return (
+            f"模型暂时不可用，当前无法可靠判断你在 {question_id} 推导中的具体错误。"
+            "请补充你使用的公式和代入步骤；系统会保留本次作答，不会用标准答案冒充诊断。"
+        )
+    if guidance_mode == "step":
+        return (
+            f"模型暂时不可用。先完成 {question_id} 的第 1 步：围绕“{keypoints}”"
+            "列出已知条件与目标量。把这一步发给我后，再继续下一步。"
+        )
+    return (
+        "大模型暂时不可用，先为你展示题库中的标准解析。\n\n"
+        f"**{question_id}**\n\n{row.get('explanation') or row.get('answer') or '题库暂未提供解析。'}"
+    )
+
+
+def _stream_interruption_message() -> str:
+    return "\n\n模型连接中断，本次回答可能不完整。题库依据已保留，请稍后重试。"
 
 
 def _attempt_analytics_payload(attempt: QuestionAttempt) -> dict[str, Any]:
@@ -621,6 +684,15 @@ async def submit_question_attempt(
             else "作答已保存。当前无法可靠完成自动等价判断，建议补充关键公式或解题思路后再次提交。"
         )
         error_type = "" if exact else "表达不完整"
+    else:
+        # Do not let free-form model labels pollute mastery analytics.  A
+        # correct response has no error type; other responses use the audited
+        # taxonomy even if the provider returned an unexpected label.
+        if verdict == "correct":
+            error_type = ""
+        elif error_type not in ALLOWED_ERROR_TYPES:
+            error_type = "表达不完整"
+        feedback = feedback[:2000]
     attempt = QuestionAttempt(
         user_id=user.id,
         assignment_id=assignment_id,
@@ -783,8 +855,15 @@ async def assistant(
                 pass
         if prior_source_ids:
             break
-    carried_ids = prior_source_ids if is_contextual_follow_up(message) else []
-    context_rows = retrieve_context(message, [*question_ids, *filter(None, carried_ids)], limit=6)
+    carried_ids = _carried_question_ids(message, prior_source_ids) if is_contextual_follow_up(message) else []
+    recommendation_count = requested_recommendation_count(message) if mode == "recommend" else 6
+    context_rows = retrieve_context(
+        message,
+        [*question_ids, *carried_ids],
+        limit=recommendation_count,
+    )
+    if mode == "recommend":
+        context_rows = _ordered_recommendations(context_rows)
     session.updated_at = datetime.now(timezone.utc)
     if session.title == "新对话":
         session.title = message[:36]
@@ -819,7 +898,10 @@ async def assistant(
         )
 
     if mode == "recommend":
-        intro = "根据你的要求，我从题库中筛选了这些题。建议先独立作答，再查看解析："
+        intro = (
+            f"根据你的要求，我从题库中筛选了 {len(context_rows)} 道题，"
+            "并按难度由易到难排列。建议先独立作答，再查看解析："
+        )
         return await save_answer(
             intro,
             [compact_question(row, include_answer=False) for row in context_rows],
@@ -837,16 +919,11 @@ async def assistant(
             system=system,
             max_tokens=4096,
         )
+        if not answer.strip():
+            raise RuntimeError("模型返回了空内容")
         model = LLMClient().model
     except Exception:
-        # Keep tutoring useful when the configured model endpoint, proxy, or API
-        # key is temporarily unavailable.  The fallback is still grounded in the
-        # retrieved question bank and never invents an answer.
-        first = context_rows[0]
-        answer = (
-            f"大模型暂时不可用，先为你展示题库中的标准解析。\n\n"
-            f"**{first['ID']}**\n\n{first.get('explanation') or first.get('answer')}"
-        )
+        answer = _grounded_tutor_fallback(context_rows[0], guidance_mode)
         model = "question-bank-fallback"
     return await save_answer(
         answer,
@@ -895,8 +972,15 @@ async def assistant_stream(
                 pass
         if prior_source_ids:
             break
-    carried_ids = prior_source_ids if is_contextual_follow_up(message) else []
-    context_rows = retrieve_context(message, [*question_ids, *filter(None, carried_ids)], limit=6)
+    carried_ids = _carried_question_ids(message, prior_source_ids) if is_contextual_follow_up(message) else []
+    recommendation_count = requested_recommendation_count(message) if mode == "recommend" else 6
+    context_rows = retrieve_context(
+        message,
+        [*question_ids, *carried_ids],
+        limit=recommendation_count,
+    )
+    if mode == "recommend":
+        context_rows = _ordered_recommendations(context_rows)
     sources = _sources_from_rows(context_rows)
     session.updated_at = datetime.now(timezone.utc)
     if session.title == "新对话":
@@ -915,7 +999,10 @@ async def assistant_stream(
             yield line("delta", answer)
             model = "retrieval-only"
         elif mode == "recommend":
-            answer = "我按知识点相关度筛选了这些题。建议先从较容易的题开始，并在独立作答后再查看解析。"
+            answer = (
+                f"我筛选了 {len(context_rows)} 道题，并按难度由易到难排列。"
+                "建议独立作答后再查看解析。"
+            )
             yield line("delta", answer)
             model = "question-bank-retrieval"
         else:
@@ -932,12 +1019,14 @@ async def assistant_stream(
                     chunks.append(chunk)
                     yield line("delta", chunk)
                 answer = "".join(chunks)
+                if not answer.strip():
+                    raise RuntimeError("模型返回了空内容")
                 model = client.model
             except Exception:
-                first = context_rows[0]
                 fallback = (
-                    "\n\n模型连接暂时中断，先展示题库中的标准解析：\n\n"
-                    f"**{first['ID']}**\n\n{first.get('explanation') or first.get('answer')}"
+                    _stream_interruption_message()
+                    if "".join(chunks).strip()
+                    else _grounded_tutor_fallback(context_rows[0], guidance_mode)
                 )
                 chunks.append(fallback)
                 yield line("delta", fallback)

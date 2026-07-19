@@ -7,6 +7,7 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import APP_ENV, IS_PRODUCTION, SECRET_KEY, TEACHER_REGISTRATION_CODE
@@ -41,6 +42,11 @@ def _env_flag(name: str) -> bool:
 
 def _dev_login_enabled() -> bool:
     return APP_ENV == "development" and _env_flag("DEV_LOGIN_ENABLED")
+
+
+def _dev_login_role() -> str:
+    role = os.environ.get("DEV_LOGIN_ROLE", "teacher").strip().lower()
+    return role if role in {"student", "teacher"} else "teacher"
 
 
 def create_token(user_id: int) -> str:
@@ -84,7 +90,8 @@ async def get_current_user(
 
 @router.get("/dev-login/status")
 async def dev_login_status():
-    return {"enabled": _dev_login_enabled()}
+    enabled = _dev_login_enabled()
+    return {"enabled": enabled, "role": _dev_login_role() if enabled else None}
 
 
 @router.post("/dev-login")
@@ -93,16 +100,30 @@ async def dev_login(response: Response, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404)
     username = os.environ.get("DEV_LOGIN_USER_ID", "local-teacher").strip() or "local-teacher"
     name = os.environ.get("DEV_LOGIN_NAME", "本地教师").strip() or "本地教师"
-    role = os.environ.get("DEV_LOGIN_ROLE", "teacher").strip().lower()
-    role = role if role in {"student", "teacher"} else "teacher"
+    role = _dev_login_role()
     user = (await db.execute(select(User).where(User.username == username))).scalar_one_or_none()
+    creating = user is None
     if user is None:
         user = User(username=username, name=name, role=role)
         db.add(user)
     else:
         user.name = name
         user.role = role
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        if not creating:
+            raise
+        # Two local browser sessions can click the development shortcut at the
+        # same time.  The first insert wins; reuse that user instead of turning
+        # the harmless race into a 500 response.
+        await db.rollback()
+        user = (await db.execute(select(User).where(User.username == username))).scalar_one_or_none()
+        if user is None:
+            raise
+        user.name = name
+        user.role = role
+        await db.commit()
     await db.refresh(user)
     token = create_token(user.id)
     _set_session_cookie(response, token)

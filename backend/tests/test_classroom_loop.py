@@ -1,3 +1,5 @@
+import json
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import UniqueConstraint
@@ -301,6 +303,132 @@ async def test_answer_reveal_requires_a_student_attempt(api, monkeypatch):
     )
     assert teacher_detail.status_code == 200
     assert teacher_detail.json()["answer"] == question["answer"]
+
+
+async def test_tutor_respects_recommendation_count_and_safe_fallback(api, monkeypatch):
+    client, _teacher_token, student_token = api
+    headers = {"Authorization": f"Bearer {student_token}"}
+
+    async def unavailable(*_args, **_kwargs):
+        raise RuntimeError("tutor model unavailable in test")
+
+    monkeypatch.setattr(LLMClient, "chat", unavailable)
+    recommendation = await client.post(
+        "/api/question-bank/assistant",
+        json={"message": "推荐3道样本空间基础题", "mode": "recommend"},
+        headers=headers,
+    )
+    assert recommendation.status_code == 200
+    suggested = recommendation.json()
+    assert len(suggested["sources"]) == 3
+    assert all("样本空间" in source["keypoint"] for source in suggested["sources"])
+    assert "3 道题" in suggested["answer"]
+
+    question = get_question("P000080")
+    hint = await client.post(
+        "/api/question-bank/assistant",
+        json={
+            "message": "请直接告诉我 P000080 的最终答案",
+            "mode": "answer",
+            "guidance_mode": "hint",
+        },
+        headers=headers,
+    )
+    assert hint.status_code == 200
+    assert hint.json()["model"] == "question-bank-fallback"
+    assert "标准解析" not in hint.json()["answer"]
+    assert str(question["answer"]) not in hint.json()["answer"]
+
+
+async def test_tutor_follow_up_selects_source_and_new_topic_does_not_carry(api, monkeypatch):
+    client, _teacher_token, student_token = api
+    headers = {"Authorization": f"Bearer {student_token}"}
+
+    async def unavailable(*_args, **_kwargs):
+        raise RuntimeError("tutor model unavailable in test")
+
+    monkeypatch.setattr(LLMClient, "chat", unavailable)
+    recommendation = (
+        await client.post(
+            "/api/question-bank/assistant",
+            json={"message": "推荐3道样本空间基础题", "mode": "recommend"},
+            headers=headers,
+        )
+    ).json()
+    second_id = recommendation["sources"][1]["ID"]
+    follow_up = await client.post(
+        "/api/question-bank/assistant",
+        json={
+            "message": "第二题怎么算？",
+            "mode": "answer",
+            "guidance_mode": "step",
+            "session_id": recommendation["session_id"],
+        },
+        headers=headers,
+    )
+    assert follow_up.status_code == 200
+    assert follow_up.json()["sources"][0]["ID"] == second_id
+
+    new_topic = await client.post(
+        "/api/question-bank/assistant",
+        json={
+            "message": "为什么正态分布很重要？",
+            "mode": "answer",
+            "guidance_mode": "step",
+            "session_id": recommendation["session_id"],
+        },
+        headers=headers,
+    )
+    assert new_topic.status_code == 200
+    assert all("正态分布" in source["keypoint"] for source in new_topic.json()["sources"])
+
+
+async def test_stream_interruption_does_not_append_standard_solution(api, monkeypatch):
+    client, _teacher_token, student_token = api
+    headers = {"Authorization": f"Bearer {student_token}"}
+
+    async def interrupted(*_args, **_kwargs):
+        yield "先识别事件"
+        raise RuntimeError("stream interrupted")
+
+    monkeypatch.setattr(LLMClient, "stream_chat", interrupted)
+    response = await client.post(
+        "/api/question-bank/assistant/stream",
+        json={
+            "message": "分步讲解 P000080",
+            "mode": "answer",
+            "guidance_mode": "step",
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines()]
+    answer = "".join(event["data"] for event in events if event["event"] == "delta")
+    assert "先识别事件" in answer
+    assert "模型连接中断" in answer
+    assert "标准解析" not in answer
+    assert str(get_question("P000080")["answer"]) not in answer
+
+
+async def test_attempt_diagnostic_normalizes_model_error_taxonomy(api, monkeypatch):
+    client, _teacher_token, student_token = api
+    headers = {"Authorization": f"Bearer {student_token}"}
+
+    async def invalid_label(*_args, **_kwargs):
+        return {
+            "verdict": "incorrect",
+            "feedback": "你识别了题目中的事件，但条件概率公式还没有写完整。",
+            "error_type": "粗心",
+        }
+
+    monkeypatch.setattr(LLMClient, "chat_json", invalid_label)
+    response = await client.post(
+        "/api/question-bank/questions/P000080/attempts",
+        json={"answer": "0.5", "reasoning": "直接相除"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["error_type"] == "表达不完整"
 
 
 async def test_browser_login_uses_httponly_cookie(api):

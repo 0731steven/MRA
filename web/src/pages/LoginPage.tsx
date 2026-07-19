@@ -13,11 +13,15 @@ export default function LoginPage() {
   const [register, setRegister] = useState(false);
   const [loading, setLoading] = useState(false);
   const [devLoginEnabled, setDevLoginEnabled] = useState(false);
+  const [devLoginRole, setDevLoginRole] = useState<"student" | "teacher">("teacher");
   const [devLoading, setDevLoading] = useState(false);
   useEffect(() => { if (user) navigate("/dashboard", { replace: true }); }, [user, navigate]);
   useEffect(() => {
-    apiClient.get<{ enabled: boolean }>("/api/auth/dev-login/status")
-      .then(res => setDevLoginEnabled(Boolean(res.data.enabled)))
+    apiClient.get<{ enabled: boolean; role?: "student" | "teacher" }>("/api/auth/dev-login/status")
+      .then(res => {
+        setDevLoginEnabled(Boolean(res.data.enabled));
+        setDevLoginRole(res.data.role === "student" ? "student" : "teacher");
+      })
       .catch(() => setDevLoginEnabled(false));
   }, []);
 
@@ -95,9 +99,9 @@ export default function LoginPage() {
                 onClick={devLogin}
                 className="!h-11 !border-slate-200 !bg-slate-50 !font-bold !text-slate-600 hover:!border-teal-300 hover:!text-teal-800"
               >
-                开发者一键登录
+                一键进入本地{devLoginRole === "student" ? "学生" : "教师"}端
               </Button>
-              <p className="mt-2 text-center text-sm text-slate-500">以本地教师账号进入，仅开发环境显示</p>
+              <p className="mt-2 text-center text-sm text-slate-500">使用本地{devLoginRole === "student" ? "学生" : "教师"}账号，仅开发环境显示</p>
             </>
           )}
           <div className="mt-7 border-t border-slate-100 pt-6 text-center text-sm text-slate-500">{register ? "已有账号？" : "还没有账号？"}<button onClick={() => setRegister(v => !v)} className="ml-2 font-bold text-teal-700">{register ? "直接登录" : "立即注册"}</button></div>

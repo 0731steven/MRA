@@ -167,10 +167,22 @@ def retrieve_context(message: str, question_ids: list[str] | None = None, limit:
         for keypoint in (row.get("keypoint") or [])
         if keypoint
     }
+    raw_keypoints = [
+        keypoint for keypoint in known_keypoints if keypoint.lower() in normalized_message
+    ]
+    # Prefer the most specific phrase when bank labels overlap.  Without this,
+    # “样本空间” also matched the broad “样本” label and recommended unrelated
+    # mathematical-statistics exercises.
     matched_keypoints = sorted(
-        (keypoint for keypoint in known_keypoints if keypoint.lower() in normalized_message),
-        key=len,
-        reverse=True,
+        (
+            keypoint
+            for keypoint in raw_keypoints
+            if not any(
+                keypoint != other and keypoint.lower() in other.lower()
+                for other in raw_keypoints
+            )
+        ),
+        key=lambda keypoint: (normalized_message.index(keypoint.lower()), -len(keypoint)),
     )
     difficulty = ""
     if any(word in normalized_message for word in ("简单", "基础", "入门", "容易", "易题")):
@@ -179,14 +191,38 @@ def retrieve_context(message: str, question_ids: list[str] | None = None, limit:
         difficulty = "难"
     elif any(word in normalized_message for word in ("中等", "适中")):
         difficulty = "中"
+    # Pull from all explicitly named keypoints in rounds.  Filling the result
+    # from the first keypoint alone made comparison questions such as
+    # “条件概率和全概率公式有什么区别” one-sided.  Bank order is pedagogically
+    # friendlier than lexical scoring here: introductory IDs precede later,
+    # specialised exercises (for example a non-central Gamma proof).
+    keypoint_groups: list[list[dict[str, Any]]] = []
     for keypoint in matched_keypoints:
-        matches, _ = search_questions(keypoint, keypoint=keypoint, difficulty=difficulty, page_size=limit)
-        for row in matches:
-            if row["ID"] not in seen:
+        matches, _ = search_questions(
+            "",
+            keypoint=keypoint,
+            difficulty=difficulty,
+            page_size=max(limit * 2, 10),
+        )
+        keypoint_groups.append(matches)
+    group_indexes = [0] * len(keypoint_groups)
+    while keypoint_groups and len(chosen) < limit:
+        added = False
+        for index, matches in enumerate(keypoint_groups):
+            while group_indexes[index] < len(matches) and matches[group_indexes[index]]["ID"] in seen:
+                # An exercise can cover multiple named keypoints.  Skip the
+                # duplicate but keep advancing this group's cursor.
+                group_indexes[index] += 1
+            if group_indexes[index] < len(matches):
+                row = matches[group_indexes[index]]
+                group_indexes[index] += 1
                 chosen.append(row)
                 seen.add(row["ID"])
-            if len(chosen) >= limit:
-                return chosen[:limit]
+                added = True
+                if len(chosen) >= limit:
+                    return chosen[:limit]
+        if not added:
+            break
 
     matches, _ = search_questions(message, difficulty=difficulty, page_size=max(limit * 2, 10))
     for row in matches:
@@ -203,13 +239,6 @@ def is_contextual_follow_up(message: str) -> bool:
     normalized = re.sub(r"\s+", "", message.lower())
     if re.search(r"P\d{6}", normalized.upper()):
         return False
-    follow_up_markers = (
-        "这道题", "这题", "上题", "刚才", "上述", "这里", "这一步", "为什么",
-        "再讲", "没懂", "换种", "继续", "然后呢", "怎么算", "哪里错", "我的思路",
-    )
-    if any(marker in normalized for marker in follow_up_markers):
-        return True
-    # Very short questions without a named bank keypoint are usually continuations.
     known_keypoints = {
         str(keypoint).lower()
         for row in load_questions()
@@ -217,4 +246,42 @@ def is_contextual_follow_up(message: str) -> bool:
         if keypoint
     }
     names_topic = any(keypoint in normalized for keypoint in known_keypoints)
+    referential_markers = (
+        "这道题", "这题", "上题", "上一题", "刚才", "上述", "这里", "这一步",
+        "再讲", "没懂", "换种", "继续", "然后呢", "我的思路",
+    )
+    if any(marker in normalized for marker in referential_markers):
+        return True
+    # “为什么/怎么算” can introduce a new, explicitly named topic.  Only treat
+    # these generic forms as a continuation when no bank keypoint is named.
+    generic_markers = ("为什么", "怎么算", "哪里错")
+    if any(marker in normalized for marker in generic_markers):
+        return not names_topic
+    # Very short questions without a named bank keypoint are usually continuations.
     return len(normalized) <= 12 and not names_topic
+
+
+def requested_recommendation_count(message: str, default: int = 6, maximum: int = 8) -> int:
+    """Extract an explicit exercise count such as “3道” or “三道题”."""
+    chinese_numbers = {
+        "一": 1,
+        "二": 2,
+        "两": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+        "十": 10,
+    }
+    match = re.search(
+        r"(?<!\d)(\d{1,3}|[一二两三四五六七八九十])\s*(?:道\s*题?|个\s*(?:题|练习)|题)",
+        message,
+    )
+    if not match:
+        return max(1, min(default, maximum))
+    token = match.group(1)
+    value = int(token) if token.isdigit() else chinese_numbers[token]
+    return max(1, min(value, maximum))
