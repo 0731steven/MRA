@@ -19,11 +19,20 @@ services:
       context: ..
       dockerfile: Dockerfile
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       APP_ENV: production
       APP_HOST: 0.0.0.0
       APP_PORT: 8101
+      SECRET_KEY: ${SECRET_KEY:?请配置至少32个字符的 SECRET_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MOCK: ${DEEPSEEK_MOCK:-false}
+      TEACHER_REGISTRATION_CODE: ${TEACHER_REGISTRATION_CODE:-}
+      BOOTSTRAP_TEACHER_USERNAME: ${BOOTSTRAP_TEACHER_USERNAME:-}
+      BOOTSTRAP_TEACHER_PASSWORD: ${BOOTSTRAP_TEACHER_PASSWORD:-}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mra}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-mra}
       QUESTION_BANK_PATH: /app/data/probability_questions.jsonl
     depends_on:

@@ -170,9 +170,17 @@ cd web && npm ci && npm run test:math && npm run test:ui && npm run build
 cd ../backend && pytest -q
 ```
 
+真实页面的手机与桌面验收：
+
+```bash
+cd web
+npx playwright install chromium
+npm run test:e2e
+```
+
 数学内容统一经过 `MathMarkdown` 渲染：兼容 `$...$`、`$$...$$`、`\\(...\\)`、`\\[...\\]` 和题库中的二次转义分隔符，同时保护代码块与矩阵换行。无需使用文档 OCR API 处理已有 LaTeX。
 
-CI 会分别在全新 SQLite 和真实 PostgreSQL 数据库上执行 `alembic upgrade head`、`alembic check` 和后端测试，并执行前端生产构建。本地已有的旧 SQLite 文件可能没有 Alembic 版本标记，不应在未备份、未核对结构前直接执行 `alembic stamp`。
+CI 会分别在全新 SQLite 和真实 PostgreSQL 数据库上执行 `alembic upgrade head`、`alembic check` 和后端测试，并执行前端生产构建、手机/桌面浏览器验收及 Docker Compose 生产栈健康检查。本地已有的旧 SQLite 文件可能没有 Alembic 版本标记，不应在未备份、未核对结构前直接执行 `alembic stamp`。
 
 服务提供两个健康检查接口：
 
@@ -186,3 +194,5 @@ CI 会分别在全新 SQLite 和真实 PostgreSQL 数据库上执行 `alembic up
 学生提交的文字答案、解题思路与答疑文字可能发送给部署方配置的模型服务；上传的手写图片只保存在应用数据库，不发送给模型。企业部署前应按自身制度确认模型供应商、隐私告知、数据保存周期和删除流程。
 
 交付前不得把 `.env`、数据库文件、真实密码、真实 API Key 或企业内部地址提交到仓库。
+
+交付评审可同时参考 [系统架构与数据边界](docs/ARCHITECTURE.md)、[企业交付验收清单](docs/ACCEPTANCE.md)、[安全说明](SECURITY.md) 和 [变更记录](CHANGELOG.md)。本项目不要求开发者个人先购买公网服务器；企业在其基础设施上完成部署、安全评审和最终生产验收即可。

@@ -1,5 +1,5 @@
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense, useEffect } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { App as AntdApp, ConfigProvider, Spin } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -20,6 +20,14 @@ const MyTasksPage = lazy(() => import("./pages/MyTasksPage"));
 const protectedPage = (node: React.ReactNode) => (
   <ProtectedRoute><AppLayout>{node}</AppLayout></ProtectedRoute>
 );
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [pathname]);
+  return null;
+}
 
 export default function App() {
   return (
@@ -55,6 +63,7 @@ export default function App() {
         <AntdApp>
           <AppErrorBoundary>
             <AuthProvider>
+              <ScrollToTop />
               <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#f4f7f6]" aria-live="polite"><Spin size="large" tip="正在进入课程空间…"><div className="h-16 w-52" /></Spin></div>}>
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />

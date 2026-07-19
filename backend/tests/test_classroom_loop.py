@@ -117,6 +117,85 @@ async def test_classroom_assignment_radar_and_intervention_loop(api, monkeypatch
     assert intervention_response.json()["groups"] >= 1
 
 
+async def test_teacher_can_manage_classroom_members_codes_and_task_lifecycle(api):
+    client, teacher_token, student_token = api
+    teacher_headers = {"Authorization": f"Bearer {teacher_token}"}
+    student_headers = {"Authorization": f"Bearer {student_token}"}
+
+    classroom = (
+        await client.post("/api/classrooms", json={"name": "生命周期验证班"}, headers=teacher_headers)
+    ).json()
+    original_code = classroom["join_code"]
+    joined = await client.post(
+        "/api/classrooms/join", json={"join_code": original_code}, headers=student_headers
+    )
+    assert joined.status_code == 200
+
+    code_response = await client.post(
+        f"/api/classrooms/{classroom['id']}/join-code", headers=teacher_headers
+    )
+    assert code_response.status_code == 200
+    new_code = code_response.json()["join_code"]
+    assert new_code != original_code
+    invalid_old_code = await client.post(
+        "/api/classrooms/join", json={"join_code": original_code}, headers=student_headers
+    )
+    assert invalid_old_code.status_code == 404
+
+    assignment = (
+        await client.post(
+            f"/api/classrooms/{classroom['id']}/assignments",
+            json={"topic": "条件概率", "count": 2, "due_at": "2027-01-01T12:00:00Z"},
+            headers=teacher_headers,
+        )
+    ).json()
+    assert assignment["status"] == "published"
+    assert assignment["due_at"].startswith("2027-01-01T12:00:00")
+
+    cancelled = await client.patch(
+        f"/api/assignments/{assignment['id']}",
+        json={"status": "cancelled"},
+        headers=teacher_headers,
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert (await client.get("/api/assignments/mine", headers=student_headers)).json() == []
+    hidden_detail = await client.get(
+        f"/api/assignments/{assignment['id']}", headers=student_headers
+    )
+    assert hidden_detail.status_code == 404
+
+    republished = await client.patch(
+        f"/api/assignments/{assignment['id']}",
+        json={"status": "published", "due_at": None},
+        headers=teacher_headers,
+    )
+    assert republished.status_code == 200
+    assert republished.json()["due_at"] is None
+    assert len((await client.get("/api/assignments/mine", headers=student_headers)).json()) == 1
+
+    radar_before_removal = await client.get(
+        f"/api/classrooms/{classroom['id']}/radar", headers=teacher_headers
+    )
+    student_id = radar_before_removal.json()["students"][0]["id"]
+    removed = await client.delete(
+        f"/api/classrooms/{classroom['id']}/members/{student_id}", headers=teacher_headers
+    )
+    assert removed.status_code == 200
+    radar = await client.get(f"/api/classrooms/{classroom['id']}/radar", headers=teacher_headers)
+    assert radar.json()["summary"]["members"] == 0
+
+    archived = await client.patch(
+        f"/api/classrooms/{classroom['id']}", json={"status": "archived"}, headers=teacher_headers
+    )
+    assert archived.status_code == 200
+    assert archived.json()["status"] == "archived"
+    blocked_join = await client.post(
+        "/api/classrooms/join", json={"join_code": new_code}, headers=student_headers
+    )
+    assert blocked_join.status_code == 404
+
+
 async def test_teaching_package_has_teacher_student_and_publishable_versions(api):
     client, teacher_token, student_token = api
     teacher_headers = {"Authorization": f"Bearer {teacher_token}"}

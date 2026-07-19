@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "test:math": "node --experimental-strip-types scripts/test-math-markdown.mjs",
     "test:ui": "node scripts/test-critical-ui.mjs",
+    "test:e2e": "playwright test",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",

@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Alert, Button, Empty, Form, Input, InputNumber, Popconfirm, Result, Segmented, Select, Skeleton, Tag, message } from "antd";
-import { BankOutlined, CheckCircleOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, FileTextOutlined, HistoryOutlined, ReadOutlined, SafetyCertificateOutlined, SaveOutlined, SendOutlined, TeamOutlined, WarningOutlined } from "@ant-design/icons";
+import { BankOutlined, CheckCircleOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, FileTextOutlined, HistoryOutlined, PrinterOutlined, ReadOutlined, SafetyCertificateOutlined, SaveOutlined, SendOutlined, TeamOutlined, WarningOutlined } from "@ant-design/icons";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/api/client";
@@ -108,6 +108,7 @@ export default function TeachingStudio() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -265,6 +266,15 @@ export default function TeachingStudio() {
     URL.revokeObjectURL(url);
   }
 
+  function printOrSavePdf() {
+    if (!active) return;
+    setPrinting(true);
+    window.setTimeout(() => {
+      window.print();
+      setPrinting(false);
+    }, 0);
+  }
+
   function publishQuestionIds(plan: Plan): string[] {
     if (publishSection === "diagnostic") return [plan.package.diagnostic_question_id].filter(Boolean);
     if (publishSection === "exit") return [plan.package.exit_ticket_question_id].filter(Boolean);
@@ -300,7 +310,7 @@ export default function TeachingStudio() {
     }
   }
 
-  return <div>
+  return <><div className="teaching-workspace-screen">
     <header className="mb-6">
       <h1 className="text-2xl font-black text-slate-900">分层教学包工作台</h1>
       <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">从题库证据生成教师执行版、学生学习单和课堂检测，并把任一层级直接发布到班级。</p>
@@ -358,7 +368,7 @@ export default function TeachingStudio() {
         </section>
       </aside>
 
-      <main className="min-h-[720px] overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <section className="min-h-[720px] overflow-hidden rounded-2xl border border-slate-200 bg-white" aria-label="教学包内容工作区">
         {loading ? <GeneratingState /> : active ? <>
           <div className="border-b border-slate-200 px-6 py-5 lg:px-8">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -372,7 +382,8 @@ export default function TeachingStudio() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button icon={<SaveOutlined />} loading={saving} disabled={!dirty} onClick={save}>{dirty ? "保存修改" : "已保存"}</Button>
-                <Button icon={<DownloadOutlined />} onClick={download}>导出{view === "student" ? "学生版" : "教师版"}</Button>
+                <Button icon={<DownloadOutlined />} onClick={download}>导出 Markdown</Button>
+                <Button icon={<PrinterOutlined />} onClick={printOrSavePdf}>打印 / 保存 PDF</Button>
               </div>
             </div>
             <div className="mt-5 overflow-x-auto">
@@ -414,9 +425,9 @@ export default function TeachingStudio() {
             </>}
           </div>
         </> : <EmptyTeachingState classrooms={classrooms} onGoClassrooms={() => navigate("/classrooms")} />}
-      </main>
+      </section>
     </div>
-  </div>;
+  </div>{printing && active && <article className="teaching-print-document"><header><h1>{active.title}</h1><p>{view === "student" ? "学生学习单" : "教师执行版"} · {active.duration} 分钟</p></header><div className="teaching-markdown"><MathMarkdown>{view === "student" ? active.student_content : content}</MathMarkdown></div></article>}</>;
 }
 
 function InsightsPanel({ data, packageData, loading, onRetry }: { data: Insights | null; packageData: PackageManifest; loading: boolean; onRetry: () => void }) {

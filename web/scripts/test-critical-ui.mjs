@@ -5,6 +5,9 @@ const tutor = readFileSync(new URL("../src/pages/TutorPage.tsx", import.meta.url
 const questionBank = readFileSync(new URL("../src/pages/QuestionBankPage.tsx", import.meta.url), "utf8");
 const auth = readFileSync(new URL("../src/contexts/AuthContext.tsx", import.meta.url), "utf8");
 const main = readFileSync(new URL("../src/main.tsx", import.meta.url), "utf8");
+const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+const studio = readFileSync(new URL("../src/pages/TeachingStudio.tsx", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../src/index.css", import.meta.url), "utf8");
 
 assert.doesNotMatch(
   tutor,
@@ -16,5 +19,11 @@ assert.match(tutor, /credentials:\s*"same-origin"/);
 assert.match(questionBank, /questions\/\$\{selected\.ID\}\/answer/);
 assert.doesNotMatch(auth, /localStorage\.setItem\("token"/);
 assert.match(main, /@ant-design\/v5-patch-for-react-19/);
+assert.match(app, /function ScrollToTop/);
+assert.match(questionBank, /question-card-markdown[\s\S]*min-w-0/);
+assert.match(tutor, /settingsOpen/);
+assert.match(styles, /\.tutor-markdown table[\s\S]*width:\s*max-content/);
+assert.doesNotMatch(studio, /<main className="min-h-\[720px\]/);
+assert.match(studio, /打印 \/ 保存 PDF/);
 
 console.log("critical UI regression checks passed");

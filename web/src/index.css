@@ -197,7 +197,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 .teaching-markdown table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   margin: 1rem 0;
   border-collapse: collapse;
   font-size: 0.9rem;
@@ -215,7 +216,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 .teaching-markdown th,
-.teaching-markdown td {
+.teaching-markdown td,
+.tutor-markdown th,
+.tutor-markdown td {
   min-width: 8rem;
   padding: 0.65rem 0.75rem;
   border: 1px solid #cbd5e1;
@@ -229,10 +232,62 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   font-weight: 800;
 }
 
+.tutor-markdown table {
+  width: max-content;
+  min-width: 100%;
+  margin: 1rem 0;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.tutor-markdown th {
+  background: #e2e8f0;
+  color: #334155;
+  font-weight: 800;
+}
+
 .katex-display {
+  max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0.5rem 0;
+}
+
+.question-card-markdown,
+.question-card-markdown > * { min-width: 0; max-width: 100%; }
+
+.question-card-markdown .katex-display { scrollbar-width: thin; }
+
+.teaching-print-document { display: none; }
+
+@media print {
+  @page { size: A4; margin: 16mm; }
+  .app-sidebar,
+  .app-header,
+  .mobile-tabbar,
+  .teaching-workspace-screen { display: none !important; }
+  .app-workspace { margin: 0 !important; min-height: 0 !important; }
+  .app-content { max-width: none !important; padding: 0 !important; }
+  .teaching-print-document {
+    display: block !important;
+    color: #0f172a;
+    font-size: 10.5pt;
+    line-height: 1.65;
+  }
+  .teaching-print-document > header {
+    margin-bottom: 10mm;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 5mm;
+  }
+  .teaching-print-document > header h1 { margin: 0; font-size: 20pt; }
+  .teaching-print-document > header p { margin: 2mm 0 0; color: #475569; }
+  .teaching-print-document h1,
+  .teaching-print-document h2,
+  .teaching-print-document h3 { break-after: avoid; }
+  .teaching-print-document table,
+  .teaching-print-document pre,
+  .teaching-print-document blockquote { break-inside: avoid; }
+  .teaching-print-document .katex-display { overflow: visible; }
 }
 
 .katex-error,

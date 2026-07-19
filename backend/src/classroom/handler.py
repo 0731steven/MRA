@@ -39,6 +39,12 @@ class ClassroomJoinRequest(BaseModel):
     join_code: str = Field(min_length=1, max_length=12)
 
 
+class ClassroomUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    course_name: str | None = Field(default=None, min_length=1, max_length=160)
+    status: Literal["active", "archived"] | None = None
+
+
 class AssignmentCreateRequest(BaseModel):
     topic: str = Field(default="", max_length=160)
     title: str | None = Field(default=None, max_length=180)
@@ -51,6 +57,13 @@ class AssignmentCreateRequest(BaseModel):
 
 class InterventionCreateRequest(BaseModel):
     source_assignment_id: int | None = Field(default=None, gt=0)
+
+
+class AssignmentUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=180)
+    description: str | None = Field(default=None, max_length=3000)
+    due_at: datetime | None = None
+    status: Literal["published", "cancelled", "archived"] | None = None
 
 
 def _require_teacher(user: User) -> None:
@@ -80,6 +93,19 @@ async def _classroom_for_member(db: AsyncSession, classroom_id: int, student_id:
     if classroom is None:
         raise HTTPException(status_code=404, detail="你尚未加入这个班级")
     return classroom
+
+
+async def _owned_assignment(db: AsyncSession, assignment_id: int, teacher_id: int) -> LearningAssignment:
+    assignment = (
+        await db.execute(
+            select(LearningAssignment)
+            .join(Classroom, Classroom.id == LearningAssignment.classroom_id)
+            .where(LearningAssignment.id == assignment_id, Classroom.teacher_id == teacher_id)
+        )
+    ).scalar_one_or_none()
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="任务不存在或不属于当前教师")
+    return assignment
 
 
 async def _unique_join_code(db: AsyncSession) -> str:
@@ -198,6 +224,7 @@ async def _radar_data(db: AsyncSession, classroom: Classroom) -> dict[str, Any]:
         "name": classroom.name,
         "course_name": classroom.course_name,
         "join_code": classroom.join_code,
+        "status": classroom.status,
     }
     radar["assignments"] = recent
     return radar
@@ -237,6 +264,7 @@ async def list_classrooms(
                 "name": classroom.name,
                 "course_name": classroom.course_name,
                 "join_code": classroom.join_code if user.role == "teacher" else None,
+                "status": classroom.status,
                 "members": int(members or 0),
                 "assignments": int(assignments or 0),
                 "created_at": classroom.created_at.isoformat() if classroom.created_at else None,
@@ -272,7 +300,78 @@ async def create_classroom(
         "join_code": classroom.join_code,
         "members": 0,
         "assignments": 0,
+        "status": classroom.status,
     }
+
+
+@router.patch("/classrooms/{classroom_id}")
+async def update_classroom(
+    classroom_id: int,
+    payload: ClassroomUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_teacher(user)
+    classroom = await _owned_classroom(db, classroom_id, user.id)
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="班级名称不能为空")
+        classroom.name = name
+    if payload.course_name is not None:
+        course_name = payload.course_name.strip()
+        if not course_name:
+            raise HTTPException(status_code=400, detail="课程名称不能为空")
+        classroom.course_name = course_name
+    if payload.status is not None:
+        classroom.status = payload.status
+    await db.commit()
+    await db.refresh(classroom)
+    return {
+        "id": classroom.id,
+        "name": classroom.name,
+        "course_name": classroom.course_name,
+        "join_code": classroom.join_code,
+        "status": classroom.status,
+    }
+
+
+@router.post("/classrooms/{classroom_id}/join-code")
+async def regenerate_join_code(
+    classroom_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_teacher(user)
+    classroom = await _owned_classroom(db, classroom_id, user.id)
+    classroom.join_code = await _unique_join_code(db)
+    await db.commit()
+    await db.refresh(classroom)
+    return {"id": classroom.id, "join_code": classroom.join_code, "status": classroom.status}
+
+
+@router.delete("/classrooms/{classroom_id}/members/{student_id}")
+async def remove_classroom_member(
+    classroom_id: int,
+    student_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_teacher(user)
+    await _owned_classroom(db, classroom_id, user.id)
+    membership = (
+        await db.execute(
+            select(ClassroomMembership).where(
+                ClassroomMembership.classroom_id == classroom_id,
+                ClassroomMembership.student_id == student_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if membership is None:
+        raise HTTPException(status_code=404, detail="学生不在这个班级中")
+    await db.delete(membership)
+    await db.commit()
+    return {"removed": True, "student_id": student_id}
 
 
 @router.post("/classrooms/join")
@@ -323,6 +422,8 @@ async def create_assignment(
 ):
     _require_teacher(user)
     classroom = await _owned_classroom(db, classroom_id, user.id)
+    if classroom.status != "active":
+        raise HTTPException(status_code=409, detail="班级已归档，请先恢复班级再发布任务")
     members = (
         await db.execute(
             select(ClassroomMembership.student_id).where(ClassroomMembership.classroom_id == classroom.id)
@@ -379,6 +480,8 @@ async def create_adaptive_interventions(
 ):
     _require_teacher(user)
     classroom = await _owned_classroom(db, classroom_id, user.id)
+    if classroom.status != "active":
+        raise HTTPException(status_code=409, detail="班级已归档，请先恢复班级再发布任务")
     radar = await _radar_data(db, classroom)
     if not radar["groups"]:
         raise HTTPException(status_code=400, detail="班级暂无学生，不能生成干预任务")
@@ -497,6 +600,31 @@ async def my_assignments(
     return result
 
 
+@router.patch("/assignments/{assignment_id}")
+async def update_assignment(
+    assignment_id: int,
+    payload: AssignmentUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_teacher(user)
+    assignment = await _owned_assignment(db, assignment_id, user.id)
+    if payload.title is not None:
+        title = payload.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="任务名称不能为空")
+        assignment.title = title
+    if payload.description is not None:
+        assignment.description = payload.description.strip()
+    if "due_at" in payload.model_fields_set:
+        assignment.due_at = _parse_due_at(payload.due_at)
+    if payload.status is not None:
+        assignment.status = payload.status
+    await db.commit()
+    await db.refresh(assignment)
+    return await _assignment_payload(db, assignment)
+
+
 @router.get("/assignments/{assignment_id}")
 async def assignment_detail(
     assignment_id: int,
@@ -511,6 +639,8 @@ async def assignment_detail(
     if user.role == "teacher":
         await _owned_classroom(db, assignment.classroom_id, user.id)
     else:
+        if assignment.status != "published":
+            raise HTTPException(status_code=404, detail="任务已撤回或归档")
         recipient = (
             await db.execute(
                 select(AssignmentRecipient).where(
@@ -548,4 +678,5 @@ async def classroom_detail(
         "name": classroom.name,
         "course_name": classroom.course_name,
         "join_code": classroom.join_code if user.role == "teacher" else None,
+        "status": classroom.status,
     }
