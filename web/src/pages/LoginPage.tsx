@@ -24,8 +24,8 @@ export default function LoginPage() {
   async function submit(values: { username: string; password: string; name?: string; role?: string; teacher_code?: string }) {
     setLoading(true);
     try {
-      const res = await apiClient.post<{ token: string }>(register ? "/api/auth/register" : "/api/auth/login", values);
-      await login(res.data.token);
+      await apiClient.post(register ? "/api/auth/register" : "/api/auth/login", values);
+      await login();
       navigate("/dashboard", { replace: true });
     } catch (error: unknown) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -36,8 +36,8 @@ export default function LoginPage() {
   async function devLogin() {
     setDevLoading(true);
     try {
-      const res = await apiClient.post<{ token: string }>("/api/auth/dev-login");
-      await login(res.data.token);
+      await apiClient.post("/api/auth/dev-login");
+      await login();
       navigate("/dashboard", { replace: true });
     } catch (error: unknown) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;

@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,6 +57,55 @@ MATH_MARKDOWN_RULE = (
     "所有数学公式必须使用 Markdown 数学分隔符：行内公式用 $...$，独立公式用 $$...$$；"
     "不要使用 \\(...\\) 或 \\[...\\]。"
 )
+
+
+class HintRequest(BaseModel):
+    answer: str = Field(default="", max_length=2000)
+    reasoning: str = Field(default="", max_length=5000)
+
+
+class ChatSessionCreateRequest(BaseModel):
+    mode: Literal["answer", "recommend"] = "answer"
+
+
+class AttemptRequest(BaseModel):
+    answer: str = Field(default="", max_length=2000)
+    reasoning: str = Field(default="", max_length=5000)
+    input_mode: Literal["formula", "reasoning", "image"] = "formula"
+    image_name: str | None = Field(default=None, max_length=255)
+    image_data_url: str = Field(default="", max_length=3_000_000)
+    hint_count: int = Field(default=0, ge=0, le=99)
+    assignment_id: int | None = Field(default=None, gt=0)
+
+
+class AssistantRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=6000)
+    mode: Literal["answer", "recommend"] = "answer"
+    guidance_mode: Literal["hint", "check", "step", "full"] = "step"
+    question_ids: list[str] = Field(default_factory=list, max_length=20)
+    session_id: int | None = Field(default=None, gt=0)
+
+
+class ExperimentRunRequest(BaseModel):
+    experiment_id: str = Field(min_length=1, max_length=64)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    result_summary: str = Field(min_length=1, max_length=5000)
+    observation: str = Field(default="", max_length=5000)
+
+
+class TeachingPlanUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=160)
+    content: str = Field(min_length=1, max_length=80000)
+
+
+class TeachingPlanCreateRequest(BaseModel):
+    topic: str = Field(default="", max_length=160)
+    duration: int = Field(default=45, ge=15, le=180)
+    classroom_id: int | None = Field(default=None, gt=0)
+    lesson_type: str = Field(default="concept", max_length=24)
+    learner_profile: str = Field(default="mixed", max_length=24)
+    objectives: str = Field(default="", max_length=3000)
+    question_ids: list[str] = Field(default_factory=list, max_length=30)
 
 
 def _is_teacher(user: User) -> bool:
@@ -196,11 +246,11 @@ async def list_chat_sessions(
 
 @router.post("/question-bank/sessions")
 async def create_chat_session(
-    payload: dict = Body(default={}),
+    payload: ChatSessionCreateRequest = Body(default=ChatSessionCreateRequest()),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    mode = str(payload.get("mode") or "answer")
+    mode = payload.mode
     session = ChatSession(user_id=user.id, title="新对话", mode=mode)
     db.add(session)
     await db.commit()
@@ -406,26 +456,64 @@ async def list_questions(
 
 
 @router.get("/question-bank/questions/{question_id}")
-async def question_detail(question_id: str, user: User = Depends(get_current_user)):
+async def question_detail(
+    question_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     row = get_question(question_id)
     if row is None:
         raise HTTPException(status_code=404, detail="题目不存在")
-    # Students can reveal an answer from the detail drawer; hiding it in list views
-    # prevents accidental spoilers while keeping self-study practical.
-    return compact_question(row, include_answer=True) | {"teacher_view": _is_teacher(user)}
+    teacher_view = _is_teacher(user)
+    can_reveal = teacher_view or bool(
+        await db.scalar(
+            select(QuestionAttempt.id).where(
+                QuestionAttempt.user_id == user.id,
+                QuestionAttempt.question_id == question_id,
+            ).limit(1)
+        )
+    )
+    return compact_question(row, include_answer=teacher_view) | {
+        "teacher_view": teacher_view,
+        "can_reveal": can_reveal,
+    }
+
+
+@router.get("/question-bank/questions/{question_id}/answer")
+async def reveal_question_answer(
+    question_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = get_question(question_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    if not _is_teacher(user):
+        attempted = await db.scalar(
+            select(QuestionAttempt.id).where(
+                QuestionAttempt.user_id == user.id,
+                QuestionAttempt.question_id == question_id,
+            ).limit(1)
+        )
+        if not attempted:
+            raise HTTPException(status_code=403, detail="请先提交一次作答，再查看答案与解析")
+    return compact_question(row, include_answer=True) | {
+        "teacher_view": _is_teacher(user),
+        "can_reveal": True,
+    }
 
 
 @router.post("/question-bank/questions/{question_id}/hint")
 async def question_hint(
     question_id: str,
-    payload: dict = Body(default={}),
+    payload: HintRequest = Body(default=HintRequest()),
     _user: User = Depends(get_current_user),
 ):
     row = get_question(question_id)
     if row is None:
         raise HTTPException(status_code=404, detail="题目不存在")
-    answer = str(payload.get("answer") or "").strip()
-    reasoning = str(payload.get("reasoning") or "").strip()
+    answer = payload.answer.strip()
+    reasoning = payload.reasoning.strip()
     prompt = (
         f"题目：{row.get('question')}\n知识点：{'、'.join(row.get('keypoint') or [])}\n"
         f"标准答案：{row.get('answer')}\n标准解析：{row.get('explanation')}\n"
@@ -447,28 +535,24 @@ async def question_hint(
 @router.post("/question-bank/questions/{question_id}/attempts")
 async def submit_question_attempt(
     question_id: str,
-    payload: dict = Body(...),
+    payload: AttemptRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     row = get_question(question_id)
     if row is None:
         raise HTTPException(status_code=404, detail="题目不存在")
-    answer = str(payload.get("answer") or "").strip()
-    reasoning = str(payload.get("reasoning") or "").strip()
-    image_name = str(payload.get("image_name") or "").strip()[:255]
-    image_data_url = str(payload.get("image_data_url") or "")
+    answer = payload.answer.strip()
+    reasoning = payload.reasoning.strip()
+    image_name = (payload.image_name or "").strip()
+    image_data_url = payload.image_data_url
     if image_data_url and (not image_data_url.startswith("data:image/") or len(image_data_url) > 3_000_000):
         raise HTTPException(status_code=400, detail="手写图片格式无效或超过约 2MB")
-    if not answer and not reasoning and not image_name:
+    if not answer and not reasoning and not image_data_url:
         raise HTTPException(status_code=400, detail="请填写答案、描述思路或上传手写过程")
-    assignment_id = None
+    assignment_id = payload.assignment_id
     recipient = None
-    if payload.get("assignment_id") is not None:
-        try:
-            assignment_id = int(payload["assignment_id"])
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="任务编号无效") from exc
+    if assignment_id is not None:
         assignment = (
             await db.execute(
                 select(LearningAssignment).where(
@@ -495,8 +579,8 @@ async def submit_question_attempt(
         ).scalar_one_or_none()
         if assignment is None or recipient is None or assigned_item is None:
             raise HTTPException(status_code=403, detail="这道题不属于分配给你的当前任务")
-    hint_count = max(0, min(int(payload.get("hint_count") or 0), 99))
-    input_mode = str(payload.get("input_mode") or "formula")[:24]
+    hint_count = payload.hint_count
+    input_mode = payload.input_mode
     prior_count = (
         await db.execute(
             select(func.count(QuestionAttempt.id)).where(
@@ -613,16 +697,14 @@ async def list_question_attempts(
 
 @router.post("/question-bank/experiments/runs")
 async def save_experiment_run(
-    payload: dict = Body(...),
+    payload: ExperimentRunRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    experiment_id = str(payload.get("experiment_id") or "").strip()[:64]
-    parameters = payload.get("parameters") or {}
-    result_summary = str(payload.get("result_summary") or "").strip()
-    observation = str(payload.get("observation") or "").strip()
-    if not experiment_id or not isinstance(parameters, dict) or not result_summary:
-        raise HTTPException(status_code=400, detail="实验记录不完整")
+    experiment_id = payload.experiment_id.strip()
+    parameters = payload.parameters
+    result_summary = payload.result_summary.strip()
+    observation = payload.observation.strip()
     record = ExperimentRecord(
         user_id=user.id,
         experiment_id=experiment_id,
@@ -664,19 +746,17 @@ async def list_experiment_runs(
 
 @router.post("/question-bank/assistant")
 async def assistant(
-    payload: dict = Body(...),
+    payload: AssistantRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    message = str(payload.get("message") or "").strip()
+    message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="请输入问题")
-    mode = str(payload.get("mode") or "answer")
-    guidance_mode = str(payload.get("guidance_mode") or "step")
-    if guidance_mode not in GUIDANCE_MODES:
-        raise HTTPException(status_code=400, detail="不支持的辅导方式")
-    question_ids = [str(item) for item in payload.get("question_ids") or []]
-    session_id = payload.get("session_id")
+    mode = payload.mode
+    guidance_mode = payload.guidance_mode
+    question_ids = payload.question_ids
+    session_id = payload.session_id
     if session_id:
         session = await _owned_session(db, int(session_id), user.id)
         session.mode = mode
@@ -777,20 +857,18 @@ async def assistant(
 
 @router.post("/question-bank/assistant/stream")
 async def assistant_stream(
-    payload: dict = Body(...),
+    payload: AssistantRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Stream newline-delimited JSON events while preserving the chat session."""
-    message = str(payload.get("message") or "").strip()
+    message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="请输入问题")
-    mode = str(payload.get("mode") or "answer")
-    guidance_mode = str(payload.get("guidance_mode") or "step")
-    if guidance_mode not in GUIDANCE_MODES:
-        raise HTTPException(status_code=400, detail="不支持的辅导方式")
-    question_ids = [str(item) for item in payload.get("question_ids") or []]
-    session_id = payload.get("session_id")
+    mode = payload.mode
+    guidance_mode = payload.guidance_mode
+    question_ids = payload.question_ids
+    session_id = payload.session_id
     if session_id:
         session = await _owned_session(db, int(session_id), user.id)
         session.mode = mode
@@ -901,7 +979,7 @@ async def list_teaching_plans(
 @router.put("/question-bank/teaching-plans/{plan_id}")
 async def update_teaching_plan(
     plan_id: int,
-    payload: dict = Body(...),
+    payload: TeachingPlanUpdateRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -912,11 +990,11 @@ async def update_teaching_plan(
     ).scalar_one_or_none()
     if plan is None:
         raise HTTPException(status_code=404, detail="教学设计不存在")
-    content = str(payload.get("content") or "").strip()
+    content = payload.content.strip()
     if not content:
         raise HTTPException(status_code=400, detail="教学设计内容不能为空")
     plan.content = content
-    plan.title = str(payload.get("title") or plan.title).strip()[:160]
+    plan.title = (payload.title or plan.title).strip()
     plan.updated_at = datetime.now(timezone.utc)
     await db.commit()
     return {"id": plan.id, "title": plan.title, "content": plan.content, "updated_at": plan.updated_at.isoformat()}
@@ -942,29 +1020,25 @@ async def delete_teaching_plan(
 
 @router.post("/question-bank/teaching-plan")
 async def teaching_plan(
-    payload: dict = Body(...),
+    payload: TeachingPlanCreateRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if not _is_teacher(user):
         raise HTTPException(status_code=403, detail="仅教师可生成教学设计")
-    topic = str(payload.get("topic") or "").strip()
-    question_ids = [str(item).strip().upper() for item in payload.get("question_ids") or [] if str(item).strip()]
-    objectives = str(payload.get("objectives") or "").strip()
-    duration = max(15, min(int(payload.get("duration") or 45), 180))
-    lesson_type = str(payload.get("lesson_type") or "concept")
-    learner_profile = str(payload.get("learner_profile") or "mixed")
+    topic = payload.topic.strip()
+    question_ids = [item.strip().upper() for item in payload.question_ids if item.strip()]
+    objectives = payload.objectives.strip()
+    duration = payload.duration
+    lesson_type = payload.lesson_type
+    learner_profile = payload.learner_profile
     if lesson_type not in LESSON_TYPES:
         raise HTTPException(status_code=400, detail="课堂类型无效")
     if learner_profile not in LEARNER_PROFILES:
         raise HTTPException(status_code=400, detail="学情基线无效")
     classroom = None
-    classroom_id = payload.get("classroom_id")
-    if classroom_id not in (None, ""):
-        try:
-            classroom_id = int(classroom_id)
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="班级编号无效") from exc
+    classroom_id = payload.classroom_id
+    if classroom_id is not None:
         classroom = (
             await db.execute(
                 select(Classroom).where(Classroom.id == classroom_id, Classroom.teacher_id == user.id)

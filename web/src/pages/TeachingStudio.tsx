@@ -4,7 +4,7 @@ import { BankOutlined, CheckCircleOutlined, DeleteOutlined, DownloadOutlined, Ed
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/api/client";
-import { MathMarkdown } from "@/components/MathMarkdown";
+import { MathMarkdown, markdownHeadingId } from "@/components/MathMarkdown";
 import { useAuth } from "@/contexts/AuthContext";
 
 type LayerKey = "foundation" | "progress" | "transfer";
@@ -143,6 +143,10 @@ export default function TeachingStudio() {
     () => classrooms.find(item => item.id === publishClassroomId),
     [classrooms, publishClassroomId],
   );
+  const outline = useMemo(() => {
+    const source = view === "student" ? active?.student_content || "" : content;
+    return [...source.matchAll(/^##\s+(.+)$/gm)].map(match => match[1].trim()).slice(0, 12);
+  }, [active?.student_content, content, view]);
 
   if (!teacher) return <Result status="403" title="教师专属功能" subTitle="学生账号可以使用智能答疑和题库练习。" />;
 
@@ -405,6 +409,7 @@ export default function TeachingStudio() {
               </div>
             </div> : view === "insights" ? <InsightsPanel data={insights} packageData={active.package} loading={insightsLoading} onRetry={() => loadInsights(active)} /> : <>
               {view === "student" && <Alert className="mb-6" type="info" showIcon message="这是可直接发给学生的无答案版本" description="任务路径使用中性名称，不展示教师答案、讲评依据或班级风险判断。" />}
+              {outline.length > 1 && <nav className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4" aria-label="教学包目录"><p className="text-sm font-extrabold text-slate-800">快速跳转</p><div className="mt-3 flex flex-wrap gap-2">{outline.map(heading => <a key={heading} href={`#${markdownHeadingId(heading)}`} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-teal-800 transition hover:border-teal-300 hover:bg-teal-50">{heading}</a>)}</div></nav>}
               <div className="teaching-markdown prose max-w-none text-[15px] leading-8 text-slate-700"><MathMarkdown>{view === "student" ? active.student_content : content}</MathMarkdown></div>
             </>}
           </div>

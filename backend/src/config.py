@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -16,7 +17,14 @@ IS_PRODUCTION = APP_ENV == "production"
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "sqlite+aiosqlite:///./teaching_assistant.db"
 ).strip()
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me-please")
+_configured_secret = os.environ.get("SECRET_KEY", "dev-secret-change-me-please")
+# Development may inherit an old short local secret. Derive a stable 32-byte
+# value to avoid weak-key warnings without weakening production validation.
+SECRET_KEY = (
+    _configured_secret
+    if IS_PRODUCTION or len(_configured_secret) >= 32
+    else hashlib.sha256(f"mra-development-only:{_configured_secret}".encode()).hexdigest()
+)
 TEACHER_REGISTRATION_CODE = os.environ.get("TEACHER_REGISTRATION_CODE", "").strip()
 
 

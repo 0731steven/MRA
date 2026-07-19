@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test:math": "node --experimental-strip-types scripts/test-math-markdown.mjs",
+    "test:ui": "node scripts/test-critical-ui.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ant-design/v5-patch-for-react-19": "^1.0.3",
     "@tailwindcss/vite": "^4.3.0",
     "antd": "^5.23.0",
     "axios": "^1.7.9",
@@ -19,6 +21,7 @@
     "react-markdown": "^9.0.3",
     "react-router-dom": "^7.1.0",
     "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "tailwindcss": "^4.3.0"
   },

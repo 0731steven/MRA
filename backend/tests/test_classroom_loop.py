@@ -172,6 +172,77 @@ async def test_teaching_package_has_teacher_student_and_publishable_versions(api
     assert stored.json()[0]["student_content"] == package["student_content"]
 
 
+async def test_answer_reveal_requires_a_student_attempt(api, monkeypatch):
+    client, teacher_token, student_token = api
+    teacher_headers = {"Authorization": f"Bearer {teacher_token}"}
+    student_headers = {"Authorization": f"Bearer {student_token}"}
+    question = get_question("P000001")
+
+    async def unavailable(*_args, **_kwargs):
+        raise RuntimeError("diagnostic model unavailable in test")
+
+    monkeypatch.setattr(LLMClient, "chat_json", unavailable)
+
+    student_detail = await client.get(
+        "/api/question-bank/questions/P000001", headers=student_headers
+    )
+    assert student_detail.status_code == 200
+    assert student_detail.json()["can_reveal"] is False
+    assert "answer" not in student_detail.json()
+
+    blocked = await client.get(
+        "/api/question-bank/questions/P000001/answer", headers=student_headers
+    )
+    assert blocked.status_code == 403
+
+    invalid = await client.post(
+        "/api/question-bank/questions/P000001/attempts",
+        json={"answer": question["answer"], "hint_count": "not-a-number"},
+        headers=student_headers,
+    )
+    assert invalid.status_code == 422
+
+    submitted = await client.post(
+        "/api/question-bank/questions/P000001/attempts",
+        json={"answer": question["answer"]},
+        headers=student_headers,
+    )
+    assert submitted.status_code == 200
+
+    revealed = await client.get(
+        "/api/question-bank/questions/P000001/answer", headers=student_headers
+    )
+    assert revealed.status_code == 200
+    assert revealed.json()["answer"] == question["answer"]
+
+    teacher_detail = await client.get(
+        "/api/question-bank/questions/P000001", headers=teacher_headers
+    )
+    assert teacher_detail.status_code == 200
+    assert teacher_detail.json()["answer"] == question["answer"]
+
+
+async def test_browser_login_uses_httponly_cookie(api):
+    client, _teacher_token, _student_token = api
+    registered = await client.post(
+        "/api/auth/register",
+        json={"username": "cookie-student", "password": "secure-pass-123", "name": "小周"},
+    )
+    assert registered.status_code == 200
+    cookie = registered.headers["set-cookie"]
+    assert "mra_session=" in cookie
+    assert "HttpOnly" in cookie
+    assert "token" not in registered.json()
+
+    me = await client.get("/api/auth/me")
+    assert me.status_code == 200
+    assert me.json()["name"] == "小周"
+
+    logged_out = await client.post("/api/auth/logout")
+    assert logged_out.status_code == 200
+    assert (await client.get("/api/auth/me")).status_code == 401
+
+
 def test_radar_does_not_overstate_low_evidence_and_recommends_fresh_questions():
     rows = load_questions()
     question = next(row for row in rows if "条件概率" in row["keypoint"])

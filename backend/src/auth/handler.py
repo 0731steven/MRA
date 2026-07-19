@@ -3,21 +3,36 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import APP_ENV, SECRET_KEY, TEACHER_REGISTRATION_CODE
+from ..config import APP_ENV, IS_PRODUCTION, SECRET_KEY, TEACHER_REGISTRATION_CODE
 from ..db.models import User
 from ..db.session import get_db
 from .security import hash_password, verify_password
 
 
 router = APIRouter()
-bearer = HTTPBearer()
+bearer = HTTPBearer(auto_error=False)
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24 * 7
+SESSION_COOKIE = "mra_session"
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=8, max_length=128)
+    name: str | None = Field(default=None, max_length=128)
+    role: str = Field(default="student", max_length=16)
+    teacher_code: str = Field(default="", max_length=256)
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
 
 
 def _env_flag(name: str) -> bool:
@@ -36,12 +51,28 @@ def create_token(user_id: int) -> str:
     )
 
 
+def _set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=TOKEN_EXPIRE_HOURS * 3600,
+        httponly=True,
+        secure=IS_PRODUCTION,
+        samesite="lax",
+        path="/",
+    )
+
+
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE),
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    token = credentials.credentials if credentials else session_token
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
     try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = int(payload["sub"])
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录状态无效") from exc
@@ -57,7 +88,7 @@ async def dev_login_status():
 
 
 @router.post("/dev-login")
-async def dev_login(db: AsyncSession = Depends(get_db)):
+async def dev_login(response: Response, db: AsyncSession = Depends(get_db)):
     if not _dev_login_enabled():
         raise HTTPException(status_code=404)
     username = os.environ.get("DEV_LOGIN_USER_ID", "local-teacher").strip() or "local-teacher"
@@ -73,20 +104,20 @@ async def dev_login(db: AsyncSession = Depends(get_db)):
         user.role = role
     await db.commit()
     await db.refresh(user)
-    return {"token": create_token(user.id), "user": _user_payload(user)}
+    token = create_token(user.id)
+    _set_session_cookie(response, token)
+    return {"user": _user_payload(user)}
 
 
 @router.post("/register")
-async def register(payload: dict = Body(...), db: AsyncSession = Depends(get_db)):
-    username = str(payload.get("username") or "").strip()
-    password = str(payload.get("password") or "")
-    name = str(payload.get("name") or username).strip()
-    role = str(payload.get("role") or "student").lower()
-    teacher_code = str(payload.get("teacher_code") or "")
-    if not username or not password:
-        raise HTTPException(status_code=400, detail="请输入用户名和密码")
-    if len(password) < 8:
-        raise HTTPException(status_code=400, detail="密码至少需要 8 位")
+async def register(payload: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)):
+    username = payload.username.strip()
+    password = payload.password
+    name = (payload.name or "").strip() or username
+    role = payload.role.strip().lower()
+    teacher_code = payload.teacher_code
+    if not username:
+        raise HTTPException(status_code=400, detail="请输入用户名")
     if role not in {"student", "teacher"}:
         raise HTTPException(status_code=400, detail="身份必须是学生或教师")
     if role == "teacher" and (
@@ -103,17 +134,33 @@ async def register(payload: dict = Body(...), db: AsyncSession = Depends(get_db)
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return {"token": create_token(user.id), "user": _user_payload(user)}
+    token = create_token(user.id)
+    _set_session_cookie(response, token)
+    return {"user": _user_payload(user)}
 
 
 @router.post("/login")
-async def login(payload: dict = Body(...), db: AsyncSession = Depends(get_db)):
-    username = str(payload.get("username") or "").strip()
-    password = str(payload.get("password") or "")
+async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+    username = payload.username.strip()
+    password = payload.password
     user = (await db.execute(select(User).where(User.username == username))).scalar_one_or_none()
     if user is None or not user.password_hash or not verify_password(password, user.password_hash):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
-    return {"token": create_token(user.id), "user": _user_payload(user)}
+    token = create_token(user.id)
+    _set_session_cookie(response, token)
+    return {"user": _user_payload(user)}
+
+
+@router.post("/logout")
+async def logout(response: Response):
+    response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        secure=IS_PRODUCTION,
+        httponly=True,
+        samesite="lax",
+    )
+    return {"logged_out": True}
 
 
 @router.get("/me")

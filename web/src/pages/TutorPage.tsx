@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Drawer, Input, Popconfirm, Segmented, Spin, Tag, message as toast } from "antd";
 import { BulbOutlined, DeleteOutlined, EyeOutlined, PlusOutlined, RobotOutlined, SendOutlined, StopOutlined, UserOutlined } from "@ant-design/icons";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { apiClient } from "@/api/client";
 import { MathMarkdown } from "@/components/MathMarkdown";
 
 interface Source { ID: string; qtype: string; question: string; keypoint: string[]; hard_level: string }
 interface Msg { id?: number; role: "user" | "assistant"; content: string; sources?: Source[]; model?: string }
 interface Session { id: number; title: string; mode: string; created_at: string; updated_at: string }
-interface QuestionDetail extends Source { answer?: string; explanation?: string }
+interface QuestionDetail extends Source { answer?: string; explanation?: string; can_reveal?: boolean; teacher_view?: boolean }
 
 const guidanceOptions = [
   { label: "只给提示", value: "hint" },
@@ -21,6 +21,7 @@ const starters = ["请讲解 P000001，并说明容易错在哪里", "推荐 3 �
 
 export default function TutorPage() {
   const [search] = useSearchParams();
+  const navigate = useNavigate();
   const initialPrompt = search.get("prompt") || "";
   const [mode, setMode] = useState(search.get("mode") === "recommend" ? "recommend" : "answer");
   const [guidanceMode, setGuidanceMode] = useState("step");
@@ -47,7 +48,9 @@ export default function TutorPage() {
   // The initial prompt intentionally controls whether the latest session reopens.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => bottom.current?.scrollIntoView({ behavior: "smooth" }), [messages, loading]);
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
   async function refreshSessions() {
     try { const res = await apiClient.get<Session[]>("/api/question-bank/sessions"); setSessions(res.data); setHistoryError(false); } catch { setHistoryError(true); }
@@ -76,6 +79,18 @@ export default function TutorPage() {
     try { const response = await apiClient.get<QuestionDetail>(`/api/question-bank/questions/${id}`); setSelected(response.data); setShowAnswer(false); } catch { toast.error("题目详情加载失败，请稍后重试"); }
   }
 
+  async function revealAnswer() {
+    if (!selected) return;
+    try {
+      const response = await apiClient.get<QuestionDetail>(`/api/question-bank/questions/${selected.ID}/answer`);
+      setSelected(current => current ? { ...current, ...response.data } : current);
+      setShowAnswer(true);
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.warning(detail || "答案暂时无法查看，请先完成一次作答");
+    }
+  }
+
   async function deleteSession(id: number) {
     try { await apiClient.delete(`/api/question-bank/sessions/${id}`); const remaining = sessions.filter(item => item.id !== id); setSessions(remaining); if (activeSession === id) { setActiveSession(null); setMessages([]); if (remaining.length) await openSession(remaining[0].id); } toast.success("会话已删除"); } catch { toast.error("删除失败，会话仍然保留"); }
   }
@@ -89,10 +104,10 @@ export default function TutorPage() {
     const controller = new AbortController();
     requestController.current = controller;
     try {
-      const token = localStorage.getItem("token");
       const response = await fetch("/api/question-bank/assistant/stream", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ message: text, mode, guidance_mode: guidanceMode, session_id: activeSession }),
         signal: controller.signal,
       });
@@ -156,8 +171,8 @@ export default function TutorPage() {
         <div className="space-y-6">{messages.map((item, index) => <div key={item.id || index} className={`flex gap-3 ${item.role === "user" ? "justify-end" : "justify-start"}`}>{item.role === "assistant" && <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-700 text-white" aria-hidden="true"><RobotOutlined /></span>}<div className={`max-w-[86%] rounded-2xl px-4 py-3.5 sm:max-w-[82%] sm:px-5 sm:py-4 ${item.role === "user" ? "bg-teal-700 text-white" : "bg-slate-50 text-slate-700"}`}>{item.role === "assistant" && !item.content ? <div className="flex items-center gap-2 py-1 text-sm text-slate-500"><Spin size="small" />正在检索题库并组织引导…</div> : <div className="tutor-markdown text-[15px] leading-8"><MathMarkdown>{item.content}</MathMarkdown></div>}{item.sources && item.sources.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><div className="mb-3 text-sm font-bold text-slate-600">参考题目 · 点击查看</div><div className="grid gap-2 sm:grid-cols-2">{item.sources.map(source => <button key={source.ID} onClick={() => openSource(source.ID)} className="rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-teal-300 hover:bg-teal-50"><div className="flex items-center justify-between"><span className="text-sm font-extrabold text-teal-800">{source.ID}</span><Tag color="cyan" className="!mr-0">{source.hard_level}</Tag></div><p className="mt-2 line-clamp-2 text-sm leading-5 text-slate-600">{source.question}</p></button>)}</div></div>}{item.model && <div className="mt-3 text-sm text-slate-500">回答模型：{item.model}</div>}</div>{item.role === "user" && <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-white" aria-hidden="true"><UserOutlined /></span>}</div>)}</div>
         <div ref={bottom} />
       </div>
-      <footer className="border-t border-slate-100 bg-white p-4 sm:p-5"><div className="mx-auto flex max-w-3xl items-end gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2 focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-100"><Input.TextArea aria-label="输入问题" value={input} disabled={loading} maxLength={6000} onChange={event => setInput(event.target.value)} onPressEnter={event => { if (!event.shiftKey) { event.preventDefault(); send(); } }} autoSize={{ minRows: 1, maxRows: 5 }} bordered={false} placeholder={mode === "answer" ? "继续追问，或输入新的题号与知识点…" : "描述想练习的知识点和难度…"} />{loading ? <Button danger shape="circle" aria-label="停止生成" icon={<StopOutlined />} onClick={() => requestController.current?.abort()} /> : <Button type="primary" shape="circle" aria-label="发送问题" icon={<SendOutlined />} disabled={!input.trim()} onClick={() => send()} />}</div><p className="mt-2 text-center text-sm text-slate-500">会话自动保存 · Enter 发送 · Shift + Enter 换行</p></footer>
+      <footer className="border-t border-slate-100 bg-white p-4 sm:p-5"><div className="mx-auto flex max-w-3xl items-end gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2 focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-100"><Input.TextArea aria-label="输入问题" value={input} disabled={loading} maxLength={6000} onChange={event => setInput(event.target.value)} onPressEnter={event => { if (!event.shiftKey) { event.preventDefault(); send(); } }} autoSize={{ minRows: 1, maxRows: 5 }} variant="borderless" placeholder={mode === "answer" ? "继续追问，或输入新的题号与知识点…" : "描述想练习的知识点和难度…"} />{loading ? <Button danger shape="circle" aria-label="停止生成" icon={<StopOutlined />} onClick={() => requestController.current?.abort()} /> : <Button type="primary" shape="circle" aria-label="发送问题" icon={<SendOutlined />} disabled={!input.trim()} onClick={() => send()} />}</div><p className="mt-2 text-center text-sm text-slate-500">会话自动保存 · Enter 发送 · 文字问题可能发送给部署企业配置的模型服务</p></footer>
     </section>
-    <Drawer open={!!selected} onClose={() => setSelected(null)} width="min(680px, 100vw)" title={selected ? `${selected.ID} · ${selected.qtype}` : "题目详情"}>{selected && <div className="question-markdown space-y-5"><div className="rounded-2xl bg-slate-50 p-5"><MathMarkdown>{selected.question}</MathMarkdown></div><div className="flex flex-wrap gap-2">{selected.keypoint?.map(item => <Tag color="cyan" key={item}>{item}</Tag>)}</div>{showAnswer ? <><div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-emerald-950"><h3 className="mb-3 font-bold">参考答案</h3><MathMarkdown>{selected.answer || "暂无"}</MathMarkdown></div><div className="rounded-2xl border border-sky-100 bg-sky-50 p-5 text-sky-950"><h3 className="mb-3 font-bold">详细解析</h3><MathMarkdown>{selected.explanation || "暂无"}</MathMarkdown></div></> : <Button block size="large" icon={<EyeOutlined />} onClick={() => setShowAnswer(true)}>完成思考后查看答案与解析</Button>}<Button block type="primary" size="large" onClick={() => { setSelected(null); setInput(`请用当前的辅导方式带我完成 ${selected.ID}`); }}>用这道题继续练习</Button></div>}</Drawer>
+    <Drawer open={!!selected} onClose={() => setSelected(null)} width="min(680px, 100vw)" title={selected ? `${selected.ID} · ${selected.qtype}` : "题目详情"}>{selected && <div className="question-markdown space-y-5"><div className="rounded-2xl bg-slate-50 p-5"><MathMarkdown>{selected.question}</MathMarkdown></div><div className="flex flex-wrap gap-2">{selected.keypoint?.map(item => <Tag color="cyan" key={item}>{item}</Tag>)}</div>{showAnswer ? <><div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-emerald-950"><h3 className="mb-3 font-bold">参考答案</h3><MathMarkdown>{selected.answer || "暂无"}</MathMarkdown></div><div className="rounded-2xl border border-sky-100 bg-sky-50 p-5 text-sky-950"><h3 className="mb-3 font-bold">详细解析</h3><MathMarkdown>{selected.explanation || "暂无"}</MathMarkdown></div></> : <Button block size="large" icon={<EyeOutlined />} onClick={revealAnswer}>{selected.teacher_view || selected.can_reveal ? "查看答案与解析" : "先完成一次作答，再查看答案"}</Button>}{!selected.teacher_view && !selected.can_reveal && <Button block size="large" onClick={() => navigate(`/questions?query=${selected.ID}`)}>到题库提交作答</Button>}<Button block type="primary" size="large" onClick={() => { setSelected(null); setInput(`请用当前的辅导方式带我完成 ${selected.ID}`); }}>用这道题继续练习</Button></div>}</Drawer>
   </div>;
 }

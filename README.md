@@ -8,7 +8,7 @@
 - 教学闭环：教师创建班级并发布短诊断，学生使用班级码加入和完成任务；系统按班级证据生成知识点风险、动态干预分组和无提示迁移验证
 - 探究实验：提供大数定律、概率分布、极限定理、贝叶斯、置信区间与蒙特卡洛等 8 个参数化实验，并关联题库练习
 - 教师端：按主题、课时、课堂类型、学情基线和指定题号生成教师执行版、无答案学生学习单与证据报告，可编辑、保存、分别导出，并把任一层级直接发布为班级任务
-- 身份登录：账号分为 `student` 和 `teacher`，教师注册需要部署方配置的邀请码
+- 身份登录：账号分为 `student` 和 `teacher`，教师注册需要部署方配置的邀请码；浏览器会话使用 HttpOnly Cookie
 - 专属题库：内置 `P000001`—`P001007` 共 1007 道题
 - 会话记忆：自动保存历史会话，并携带最近 20 条消息支持连续追问
 
@@ -104,6 +104,8 @@ docker compose down
 | `BOOTSTRAP_TEACHER_*` | 可选的首个教师账号，只在账号不存在时创建 |
 | `TEACHER_REGISTRATION_CODE` | 可选；教师自行注册时必须提供的邀请代码 |
 | `DEEPSEEK_API_KEY` | 部署方提供的模型 API Key |
+| `DEEPSEEK_TIMEOUT_SECONDS` | 模型请求超时秒数，默认 60 |
+| `DEEPSEEK_MAX_RETRIES` | 模型请求最大重试次数，默认 2、最大 5 |
 
 不使用 Docker、直接连接企业 PostgreSQL 时设置：
 
@@ -164,7 +166,7 @@ docker compose exec -T db pg_restore -U mra -d mra --clean --if-exists < mra.bac
 ## 验证
 
 ```bash
-cd web && npm ci && npm run test:math && npm run build
+cd web && npm ci && npm run test:math && npm run test:ui && npm run build
 cd ../backend && pytest -q
 ```
 
@@ -179,6 +181,8 @@ CI 会分别在全新 SQLite 和真实 PostgreSQL 数据库上执行 `alembic up
 
 ## 源代码交付边界
 
-本仓库交付应用源代码、依赖清单、数据库迁移、容器配置、配置模板和部署说明。部署方负责提供实际服务器、域名、HTTPS 证书、数据库密码、`SECRET_KEY`、模型 API Key、网络策略以及日常备份与监控。
+本仓库交付应用源代码、依赖清单、数据库迁移、容器配置、配置模板和部署说明，不包含公网服务器。部署方负责提供实际服务器、域名、HTTPS 证书、数据库密码、`SECRET_KEY`、模型 API Key、网络入口限流/WAF、网络策略以及日常备份与监控。
+
+学生提交的文字答案、解题思路与答疑文字可能发送给部署方配置的模型服务；上传的手写图片只保存在应用数据库，不发送给模型。企业部署前应按自身制度确认模型供应商、隐私告知、数据保存周期和删除流程。
 
 交付前不得把 `.env`、数据库文件、真实密码、真实 API Key 或企业内部地址提交到仓库。

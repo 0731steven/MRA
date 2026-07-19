@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { normalizeMathMarkdown } from "../src/utils/mathMarkdown.ts";
 
@@ -39,7 +40,7 @@ const html = renderToStaticMarkup(
   React.createElement(
     ReactMarkdown,
     {
-      remarkPlugins: [remarkMath],
+      remarkPlugins: [remarkGfm, remarkMath],
       rehypePlugins: [[rehypeKatex, { throwOnError: false, strict: "ignore", output: "htmlAndMathml" }]],
     },
     normalizeMathMarkdown(`${inline}\n\n${display}\n\n${malformedDisplay}`),
@@ -49,11 +50,21 @@ assert.match(html, /class="katex"/);
 assert.doesNotMatch(html, /\\\(|\\\[|\\\]|\\\)/);
 assert.doesNotMatch(html, /先验分布为\$\$/);
 
+const tableHtml = renderToStaticMarkup(
+  React.createElement(
+    ReactMarkdown,
+    { remarkPlugins: [remarkGfm, remarkMath] },
+    "| 环节 | 时间 |\n| --- | --- |\n| 导入 | 5 分钟 |",
+  ),
+);
+assert.match(tableHtml, /<table>/);
+assert.match(tableHtml, /<th>环节<\/th>/);
+
 assert.doesNotThrow(() => renderToStaticMarkup(
   React.createElement(
     ReactMarkdown,
     {
-      remarkPlugins: [remarkMath],
+      remarkPlugins: [remarkGfm, remarkMath],
       rehypePlugins: [[rehypeKatex, { throwOnError: false, strict: "ignore" }]],
     },
     "$" + slash + "notARealCommand{x}$",
@@ -75,7 +86,7 @@ for (const source of legacyFields) {
     React.createElement(
       ReactMarkdown,
       {
-        remarkPlugins: [remarkMath],
+        remarkPlugins: [remarkGfm, remarkMath],
         rehypePlugins: [[rehypeKatex, { throwOnError: false, strict: "ignore" }]],
       },
       normalizeMathMarkdown(source),

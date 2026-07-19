@@ -41,6 +41,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     setMobileOpen(false);
   }
 
+  async function signOut() {
+    await logout();
+    navigate("/login");
+  }
+
   const brand = (
     <button onClick={() => navigate("/dashboard")} className="brand-button" aria-label="返回学习工作台">
       <span className="brand-mark">π</span>
@@ -81,7 +86,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
           <Dropdown
-            menu={{ items: accountItems, onClick: ({ key }) => { if (key === "logout") { logout(); navigate("/login"); } } }}
+            menu={{ items: accountItems, onClick: ({ key }) => { if (key === "logout") void signOut(); } }}
             placement="bottomRight"
             trigger={["click"]}
           >

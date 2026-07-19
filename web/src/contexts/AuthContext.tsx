@@ -17,8 +17,8 @@ interface User {
 interface AuthState {
   user: User | null;
   loading: boolean;
-  login: (token: string) => Promise<void>;
-  logout: () => void;
+  login: () => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState>(null!);
@@ -38,26 +38,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+    // Remove tokens created by older builds. Authentication now uses an
+    // HttpOnly session cookie that browser scripts cannot read.
+    localStorage.removeItem("token");
     apiClient
       .get<User>("/api/auth/me")
       .then((res) => setUser(res.data))
-      .catch(() => localStorage.removeItem("token"))
+      .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 
-  async function login(token: string): Promise<void> {
-    localStorage.setItem("token", token);
-    try { const res = await apiClient.get<User>("/api/auth/me"); setUser(res.data); } catch (error) { localStorage.removeItem("token"); throw error; }
+  async function login(): Promise<void> {
+    const res = await apiClient.get<User>("/api/auth/me");
+    setUser(res.data);
   }
 
-  function logout() {
-    localStorage.removeItem("token");
-    setUser(null);
+  async function logout() {
+    try { await apiClient.post("/api/auth/logout"); } finally { setUser(null); }
   }
 
   return (

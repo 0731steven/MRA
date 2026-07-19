@@ -16,6 +16,8 @@ DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.co
 DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
 DEEPSEEK_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "high")
 DEEPSEEK_USE_ENV_PROXY = os.environ.get("DEEPSEEK_USE_ENV_PROXY", "false").lower() == "true"
+DEEPSEEK_TIMEOUT_SECONDS = max(5.0, float(os.environ.get("DEEPSEEK_TIMEOUT_SECONDS", "60")))
+DEEPSEEK_MAX_RETRIES = max(0, min(int(os.environ.get("DEEPSEEK_MAX_RETRIES", "2")), 5))
 
 
 class ChatMessage:
@@ -51,6 +53,8 @@ class LLMClient:
             api_key=api_key,
             base_url=DEEPSEEK_BASE_URL,
             http_client=http_client,
+            timeout=DEEPSEEK_TIMEOUT_SECONDS,
+            max_retries=DEEPSEEK_MAX_RETRIES,
         )
 
     async def complete_response(

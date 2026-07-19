@@ -180,6 +180,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 .teaching-markdown h2 {
+  scroll-margin-top: 96px;
   margin: 2rem 0 0.75rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid #e2e8f0;
@@ -200,6 +201,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   margin: 1rem 0;
   border-collapse: collapse;
   font-size: 0.9rem;
+}
+
+.markdown-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 10px;
+}
+
+.markdown-table-scroll:focus-visible {
+  outline: 3px solid rgba(20, 184, 166, .24);
+  outline-offset: 2px;
 }
 
 .teaching-markdown th,

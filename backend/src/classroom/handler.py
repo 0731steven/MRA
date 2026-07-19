@@ -3,9 +3,10 @@ from __future__ import annotations
 import secrets
 import string
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +28,29 @@ from .analytics import build_classroom_radar, suggest_intervention_questions
 
 router = APIRouter()
 JOIN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
-ASSIGNMENT_KINDS = {"diagnostic", "intervention", "retest"}
+
+
+class ClassroomCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    course_name: str = Field(default="概率论与数理统计", max_length=160)
+
+
+class ClassroomJoinRequest(BaseModel):
+    join_code: str = Field(min_length=1, max_length=12)
+
+
+class AssignmentCreateRequest(BaseModel):
+    topic: str = Field(default="", max_length=160)
+    title: str | None = Field(default=None, max_length=180)
+    description: str | None = Field(default=None, max_length=3000)
+    question_ids: list[str] = Field(default_factory=list, max_length=20)
+    kind: Literal["diagnostic", "intervention", "retest"] = "diagnostic"
+    count: int = Field(default=5, ge=1, le=8)
+    due_at: datetime | None = None
+
+
+class InterventionCreateRequest(BaseModel):
+    source_assignment_id: int | None = Field(default=None, gt=0)
 
 
 def _require_teacher(user: User) -> None:
@@ -224,13 +247,13 @@ async def list_classrooms(
 
 @router.post("/classrooms")
 async def create_classroom(
-    payload: dict = Body(...),
+    payload: ClassroomCreateRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     _require_teacher(user)
-    name = str(payload.get("name") or "").strip()
-    course_name = str(payload.get("course_name") or "概率论与数理统计").strip()
+    name = payload.name.strip()
+    course_name = payload.course_name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="请输入班级名称")
     classroom = Classroom(
@@ -254,13 +277,13 @@ async def create_classroom(
 
 @router.post("/classrooms/join")
 async def join_classroom(
-    payload: dict = Body(...),
+    payload: ClassroomJoinRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if user.role != "student":
         raise HTTPException(status_code=403, detail="教师账号不能通过班级码加入班级")
-    code = str(payload.get("join_code") or "").strip().upper()
+    code = payload.join_code.strip().upper()
     classroom = (
         await db.execute(select(Classroom).where(Classroom.join_code == code, Classroom.status == "active"))
     ).scalar_one_or_none()
@@ -294,7 +317,7 @@ async def classroom_radar(
 @router.post("/classrooms/{classroom_id}/assignments")
 async def create_assignment(
     classroom_id: int,
-    payload: dict = Body(...),
+    payload: AssignmentCreateRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -307,15 +330,13 @@ async def create_assignment(
     ).scalars().all()
     if not members:
         raise HTTPException(status_code=400, detail="班级还没有学生，请先让学生使用班级码加入")
-    topic = str(payload.get("topic") or "").strip()
-    title = str(payload.get("title") or f"{topic or '指定题目'} · 课堂诊断").strip()
-    explicit_ids = [str(item).strip().upper() for item in payload.get("question_ids") or []]
-    kind = str(payload.get("kind") or "diagnostic")
-    if kind not in ASSIGNMENT_KINDS:
-        raise HTTPException(status_code=400, detail="任务类型无效")
+    topic = payload.topic.strip()
+    title = (payload.title or f"{topic or '指定题目'} · 课堂诊断").strip()
+    explicit_ids = [item.strip().upper() for item in payload.question_ids]
+    kind = payload.kind
     if not topic and not explicit_ids:
         raise HTTPException(status_code=400, detail="请输入诊断主题或指定题号")
-    count = max(1, min(int(payload.get("count") or 5), 8))
+    count = payload.count
     explicit_rows = [row for question_id in explicit_ids if (row := get_question(question_id))]
     retrieved = retrieve_context(topic or " ".join(explicit_ids), explicit_ids, limit=30)
     selected: list[dict[str, Any]] = []
@@ -332,11 +353,11 @@ async def create_assignment(
         classroom_id=classroom.id,
         created_by=user.id,
         title=title[:180],
-        description=str(payload.get("description") or "完成后，班级认知雷达会依据作答、错误类型和提示使用情况更新。")[:3000],
+        description=payload.description or "完成后，班级认知雷达会依据作答、错误类型和提示使用情况更新。",
         kind=kind,
         topic=(topic or "根据指定题目诊断")[:160],
         status="published",
-        due_at=_parse_due_at(payload.get("due_at")),
+        due_at=_parse_due_at(payload.due_at),
     )
     db.add(assignment)
     await db.flush()
@@ -352,7 +373,7 @@ async def create_assignment(
 @router.post("/classrooms/{classroom_id}/interventions")
 async def create_adaptive_interventions(
     classroom_id: int,
-    payload: dict = Body(default={}),
+    payload: InterventionCreateRequest = Body(default=InterventionCreateRequest()),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -361,12 +382,8 @@ async def create_adaptive_interventions(
     radar = await _radar_data(db, classroom)
     if not radar["groups"]:
         raise HTTPException(status_code=400, detail="班级暂无学生，不能生成干预任务")
-    source_assignment_id = payload.get("source_assignment_id")
+    source_assignment_id = payload.source_assignment_id
     if source_assignment_id:
-        try:
-            source_assignment_id = int(source_assignment_id)
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="来源任务编号无效") from exc
         source = (
             await db.execute(
                 select(LearningAssignment).where(
