@@ -41,7 +41,9 @@ async def api(tmp_path):
 
     app.dependency_overrides[get_db] = override_db
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    # Use HTTPS so production-mode Secure session cookies are exercised exactly
+    # as they are in a real deployment.
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
         yield client, create_token(teacher.id), create_token(student.id)
     app.dependency_overrides.clear()
     await engine.dispose()
