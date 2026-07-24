@@ -30,8 +30,10 @@ function ScrollToTop() {
 }
 
 export default function App() {
+  const routerBase = import.meta.env.BASE_URL.replace(/\/$/, "") || "/";
+
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBase}>
       <ConfigProvider
         locale={zhCN}
         theme={{

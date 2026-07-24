@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Button, Form, Input, Segmented, message } from "antd";
+import { Alert, Button, Form, Input, Segmented, message } from "antd";
 import { BookOutlined, CheckCircleOutlined, CodeOutlined, DatabaseOutlined, LockOutlined, ReadOutlined, UserOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/api/client";
 
 export default function LoginPage() {
+  const staticPreview = import.meta.env.VITE_STATIC_PREVIEW === "true";
   const [form] = Form.useForm();
   const selectedRole = Form.useWatch("role", form);
   const { user, login } = useAuth();
@@ -17,15 +18,20 @@ export default function LoginPage() {
   const [devLoading, setDevLoading] = useState(false);
   useEffect(() => { if (user) navigate("/dashboard", { replace: true }); }, [user, navigate]);
   useEffect(() => {
+    if (staticPreview) return;
     apiClient.get<{ enabled: boolean; role?: "student" | "teacher" }>("/api/auth/dev-login/status")
       .then(res => {
         setDevLoginEnabled(Boolean(res.data.enabled));
         setDevLoginRole(res.data.role === "student" ? "student" : "teacher");
       })
       .catch(() => setDevLoginEnabled(false));
-  }, []);
+  }, [staticPreview]);
 
   async function submit(values: { username: string; password: string; name?: string; role?: string; teacher_code?: string }) {
+    if (staticPreview) {
+      message.info("这是静态前端预览，登录与业务功能需要连接 FastAPI 后端");
+      return;
+    }
     setLoading(true);
     try {
       await apiClient.post(register ? "/api/auth/register" : "/api/auth/login", values);
@@ -79,6 +85,7 @@ export default function LoginPage() {
         <section className="flex justify-center lg:justify-end">
           <div className="w-full max-w-[440px] rounded-2xl border border-slate-200 bg-white p-8 lg:p-10">
           <div className="mb-8"><p className="mb-2 text-sm font-bold text-teal-700">账号入口</p><h2 className="text-2xl font-black tracking-tight text-slate-900">{register ? "创建账号" : "登录教学平台"}</h2><p className="mt-2 text-sm text-slate-500">{register ? "选择使用身份，进入对应工作台" : "使用你的课程平台账号继续"}</p></div>
+          {staticPreview && <Alert className="mb-6" showIcon type="info" message="GitHub Pages 静态预览" description="当前页面用于查看前端效果；登录、题库和 AI 答疑需要另外部署 FastAPI 后端。" />}
           <Form form={form} layout="vertical" requiredMark={false} onFinish={submit} initialValues={{ role: "student" }}>
             <Form.Item name="username" label="用户名" rules={[{ required: true, message: "请输入用户名" }]}><Input size="large" prefix={<UserOutlined />} placeholder="请输入用户名" autoComplete="username" maxLength={64} /></Form.Item>
             {register && <Form.Item name="name" label="姓名"><Input size="large" placeholder="你的姓名或昵称" maxLength={64} /></Form.Item>}

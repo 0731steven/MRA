@@ -49,6 +49,10 @@ npm run dev
 
 浏览器访问 `http://localhost:5173`。SQLite 数据默认写入 `backend/teaching_assistant.db`，适合开发和测试。
 
+## GitHub Pages 静态预览
+
+仓库包含 `.github/workflows/pages.yml`，可将 React 前端部署到 GitHub Pages。Pages 只托管构建后的静态文件，不运行 FastAPI、SQLite/PostgreSQL 或模型服务，因此该版本仅用于查看登录页等前端视觉效果；登录、题库、班级和 AI 答疑仍需部署后端。
+
 ## PostgreSQL / Docker 部署验证
 
 这套方式会构建前端、运行 Alembic 数据库迁移并启动 PostgreSQL 与后端。企业的真实服务器、域名和密钥不应写入源代码。

@@ -41,6 +41,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Remove tokens created by older builds. Authentication now uses an
     // HttpOnly session cookie that browser scripts cannot read.
     localStorage.removeItem("token");
+    if (import.meta.env.VITE_STATIC_PREVIEW === "true") {
+      setLoading(false);
+      return;
+    }
     apiClient
       .get<User>("/api/auth/me")
       .then((res) => setUser(res.data))
