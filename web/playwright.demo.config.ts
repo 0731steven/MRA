@@ -6,7 +6,7 @@ export default defineConfig({
   fullyParallel: false,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: "http://127.0.0.1:4173/MRA/",
+    baseURL: "http://127.0.0.1:4173/PSA/",
     channel: process.env.E2E_USE_SYSTEM_CHROME ? "chrome" : undefined,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
@@ -16,8 +16,8 @@ export default defineConfig({
     { name: "demo-mobile", use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
   ],
   webServer: {
-    command: "VITE_STATIC_PREVIEW=true npm run build -- --base=/MRA/ --outDir=dist && npm run preview -- --host 127.0.0.1 --port 4173 --outDir dist --base=/MRA/",
-    url: "http://127.0.0.1:4173/MRA/",
+    command: "VITE_STATIC_PREVIEW=true npm run build -- --base=/PSA/ --outDir=dist && npm run preview -- --host 127.0.0.1 --port 4173 --outDir dist --base=/PSA/",
+    url: "http://127.0.0.1:4173/PSA/",
     reuseExistingServer: false,
     timeout: 120_000,
   },

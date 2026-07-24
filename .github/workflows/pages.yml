@@ -37,7 +37,7 @@ jobs:
         working-directory: web
         env:
           VITE_STATIC_PREVIEW: "true"
-        run: npm run build -- --base=/MRA/ --outDir=dist
+        run: npm run build -- --base=/PSA/ --outDir=dist
       - name: Add SPA fallback
         run: cp web/dist/index.html web/dist/404.html
       - name: Upload Pages artifact
