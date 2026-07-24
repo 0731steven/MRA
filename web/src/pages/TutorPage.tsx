@@ -4,6 +4,7 @@ import { BulbOutlined, DeleteOutlined, EyeOutlined, PlusOutlined, RobotOutlined,
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { apiClient } from "@/api/client";
 import { MathMarkdown } from "@/components/MathMarkdown";
+import { demoTutorAnswer, demoTutorSources, isDemoMode } from "@/demo/demoApi";
 
 interface Source { ID: string; qtype: string; question: string; keypoint: string[]; hard_level: string }
 interface Msg { id?: number; role: "user" | "assistant"; content: string; sources?: Source[]; model?: string }
@@ -26,6 +27,7 @@ const starters = [
 
 function modelLabel(model?: string) {
   if (!model) return "";
+  if (model === "demo") return "模拟题库演示";
   if (model === "question-bank-fallback") return "题库离线引导";
   if (model === "question-bank-retrieval" || model === "retrieval-only") return "题库检索";
   return "企业模型服务";
@@ -117,6 +119,21 @@ export default function TutorPage() {
     const controller = new AbortController();
     requestController.current = controller;
     try {
+      if (isDemoMode) {
+        const demoSessionId = activeSession || Date.now();
+        const answer = demoTutorAnswer(text, requestedMode, guidanceMode);
+        const chunks = answer.match(/[\s\S]{1,24}/g) || [answer];
+        setActiveSession(demoSessionId);
+        setMessages(current => current.map((item, index) => index === current.length - 1 ? { ...item, sources: demoTutorSources } : item));
+        for (const chunk of chunks) {
+          if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+          await new Promise(resolve => window.setTimeout(resolve, 28));
+          setMessages(current => current.map((item, index) => index === current.length - 1 ? { ...item, content: item.content + chunk } : item));
+        }
+        setMessages(current => current.map((item, index) => index === current.length - 1 ? { ...item, model: "demo" } : item));
+        setSessions(current => current.some(item => item.id === demoSessionId) ? current : [{ id: demoSessionId, title: text.slice(0, 24), mode: requestedMode, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }, ...current]);
+        return;
+      }
       const response = await fetch("/api/question-bank/assistant/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -188,7 +205,7 @@ export default function TutorPage() {
         <div className="space-y-6">{messages.map((item, index) => <div key={item.id || index} className={`flex min-w-0 gap-2 sm:gap-3 ${item.role === "user" ? "justify-end" : "justify-start"}`}>{item.role === "assistant" && <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-700 text-white" aria-hidden="true"><RobotOutlined /></span>}<div className={`min-w-0 max-w-[calc(100%-2.75rem)] rounded-2xl px-4 py-3.5 sm:max-w-[82%] sm:px-5 sm:py-4 ${item.role === "user" ? "bg-teal-700 text-white" : "bg-slate-50 text-slate-700"}`}>{item.role === "assistant" && !item.content ? <div className="flex items-center gap-2 py-1 text-sm text-slate-500"><Spin size="small" />正在检索题库并组织引导…</div> : <div className="tutor-markdown min-w-0 text-[15px] leading-8"><MathMarkdown>{item.content}</MathMarkdown></div>}{item.sources && item.sources.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><div className="mb-3 text-sm font-bold text-slate-600">参考题目 · 点击查看</div><div className="grid min-w-0 gap-2 sm:grid-cols-2">{item.sources.map((source, sourceIndex) => <button key={source.ID} onClick={() => openSource(source.ID)} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-teal-300 hover:bg-teal-50"><div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-extrabold text-teal-800">第 {sourceIndex + 1} 题 · {source.ID}</span><Tag color="cyan" className="!mr-0">{source.hard_level}</Tag></div><p className="mt-2 line-clamp-2 text-sm leading-5 text-slate-600">{source.question}</p></button>)}</div></div>}{item.model && <div className="mt-3 text-sm text-slate-500">回答来源：{modelLabel(item.model)}</div>}</div>{item.role === "user" && <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-white" aria-hidden="true"><UserOutlined /></span>}</div>)}</div>
         <div ref={bottom} />
       </div>
-      <footer className="border-t border-slate-100 bg-white p-4 sm:p-5"><div className="mx-auto flex max-w-3xl items-end gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2 focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-100"><Input.TextArea aria-label="输入问题" value={input} disabled={loading} maxLength={6000} onChange={event => setInput(event.target.value)} onPressEnter={event => { if (!event.shiftKey) { event.preventDefault(); send(); } }} autoSize={{ minRows: 1, maxRows: 5 }} variant="borderless" placeholder={mode === "answer" ? "继续追问，或输入新的题号与知识点…" : "描述想练习的知识点和难度…"} />{loading ? <Button danger shape="circle" aria-label="停止生成" icon={<StopOutlined />} onClick={() => requestController.current?.abort()} /> : <Button type="primary" shape="circle" aria-label="发送问题" icon={<SendOutlined />} disabled={!input.trim()} onClick={() => send()} />}</div><p className="mt-2 text-center text-sm text-slate-500">会话自动保存 · Enter 发送 · 文字问题可能发送给部署企业配置的模型服务</p></footer>
+      <footer className="border-t border-slate-100 bg-white p-4 sm:p-5"><div className="mx-auto flex max-w-3xl items-end gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2 focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-100"><Input.TextArea aria-label="输入问题" value={input} disabled={loading} maxLength={6000} onChange={event => setInput(event.target.value)} onPressEnter={event => { if (!event.shiftKey) { event.preventDefault(); send(); } }} autoSize={{ minRows: 1, maxRows: 5 }} variant="borderless" placeholder={mode === "answer" ? "继续追问，或输入新的题号与知识点…" : "描述想练习的知识点和难度…"} />{loading ? <Button danger shape="circle" aria-label="停止生成" icon={<StopOutlined />} onClick={() => requestController.current?.abort()} /> : <Button type="primary" shape="circle" aria-label="发送问题" icon={<SendOutlined />} disabled={!input.trim()} onClick={() => send()} />}</div><p className="mt-2 text-center text-sm text-slate-500">{isDemoMode ? "模拟演示回答 · 不会调用外部模型或上传内容" : "会话自动保存 · Enter 发送 · 文字问题可能发送给部署企业配置的模型服务"}</p></footer>
     </section>
     <Drawer className="tutor-settings-drawer" open={settingsOpen} onClose={() => setSettingsOpen(false)} width="min(390px, 100vw)" title="答疑设置与历史会话"><div className="tutor-sidebar -m-6 flex min-h-[calc(100dvh-55px)] flex-col p-5">{sidebarContent}</div></Drawer>
     <Drawer open={!!selected} onClose={() => setSelected(null)} width="min(680px, 100vw)" title={selected ? `${selected.ID} · ${selected.qtype}` : "题目详情"}>{selected && <div className="question-markdown space-y-5"><div className="rounded-2xl bg-slate-50 p-5"><MathMarkdown>{selected.question}</MathMarkdown></div><div className="flex flex-wrap gap-2">{selected.keypoint?.map(item => <Tag color="cyan" key={item}>{item}</Tag>)}</div>{showAnswer ? <><div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-emerald-950"><h3 className="mb-3 font-bold">参考答案</h3><MathMarkdown>{selected.answer || "暂无"}</MathMarkdown></div><div className="rounded-2xl border border-sky-100 bg-sky-50 p-5 text-sky-950"><h3 className="mb-3 font-bold">详细解析</h3><MathMarkdown>{selected.explanation || "暂无"}</MathMarkdown></div></> : <Button block size="large" icon={<EyeOutlined />} onClick={revealAnswer}>{selected.teacher_view || selected.can_reveal ? "查看答案与解析" : "先完成一次作答，再查看答案"}</Button>}{!selected.teacher_view && !selected.can_reveal && <Button block size="large" onClick={() => navigate(`/questions?query=${selected.ID}`)}>到题库提交作答</Button>}<Button block type="primary" size="large" onClick={() => { setSelected(null); setInput(`请用当前的辅导方式带我完成 ${selected.ID}`); }}>用这道题继续练习</Button></div>}</Drawer>

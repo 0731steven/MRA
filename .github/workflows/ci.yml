@@ -108,6 +108,7 @@ jobs:
       - run: npm run test:e2e
         env:
           E2E_PYTHON: python
+      - run: npm run test:demo
 
   docker-compose-smoke:
     runs-on: ubuntu-latest

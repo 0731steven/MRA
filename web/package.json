@@ -9,6 +9,7 @@
     "test:math": "node --experimental-strip-types scripts/test-math-markdown.mjs",
     "test:ui": "node scripts/test-critical-ui.mjs",
     "test:e2e": "playwright test",
+    "test:demo": "playwright test --config playwright.demo.config.ts",
     "preview": "vite preview"
   },
   "dependencies": {

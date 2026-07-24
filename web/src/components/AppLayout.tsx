@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { Avatar, Button, Drawer, Dropdown, Menu, Tooltip } from "antd";
+import { Avatar, Button, Drawer, Dropdown, Menu, Popconfirm, Tooltip, message } from "antd";
 import type { MenuProps } from "antd";
-import { BookOutlined, CheckSquareOutlined, ExperimentOutlined, HomeOutlined, LogoutOutlined, MenuOutlined, MessageOutlined, NodeIndexOutlined, RadarChartOutlined, ReadOutlined, RightOutlined, UserOutlined } from "@ant-design/icons";
+import { BookOutlined, CheckSquareOutlined, ExperimentOutlined, HomeOutlined, LogoutOutlined, MenuOutlined, MessageOutlined, NodeIndexOutlined, RadarChartOutlined, ReadOutlined, ReloadOutlined, RightOutlined, SwapOutlined, UserOutlined } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { resetDemoData } from "@/demo/demoApi";
 
 const items = [
   { path: "/dashboard", label: "学习工作台", shortLabel: "工作台", icon: <HomeOutlined /> },
@@ -13,7 +14,7 @@ const items = [
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, isDemo, enterDemo } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -33,7 +34,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const accountItems: MenuProps["items"] = [
     { key: "identity", type: "group", label: teacher ? "教师账号" : "学生账号", children: [{ key: "profile", icon: <UserOutlined />, label: user?.name || "个人账号", disabled: true }] },
     { type: "divider" },
-    { key: "logout", icon: <LogoutOutlined />, label: "退出登录", danger: true },
+    { key: "logout", icon: <LogoutOutlined />, label: isDemo ? "退出演示" : "退出登录", danger: true },
   ];
 
   function selectMenu({ key }: { key: string }) {
@@ -44,6 +45,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   async function signOut() {
     await logout();
     navigate("/login");
+  }
+
+  function switchDemoRole() {
+    enterDemo(teacher ? "student" : "teacher");
+    navigate("/dashboard");
+    message.success(`已切换到${teacher ? "学生" : "教师"}端演示`);
+  }
+
+  function resetDemo() {
+    resetDemoData();
+    message.success("演示数据已恢复为初始状态");
+    window.location.reload();
   }
 
   const brand = (
@@ -77,6 +90,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="app-workspace">
+        {isDemo && <div className="flex min-h-10 flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-950 sm:px-6">
+          <span><strong>模拟演示</strong><span className="hidden sm:inline"> · 当前操作只保存在你的浏览器，不会影响真实数据</span></span>
+          <div className="flex items-center gap-1">
+            <Button type="text" size="small" icon={<SwapOutlined />} onClick={switchDemoRole}>切换到{teacher ? "学生" : "教师"}端</Button>
+            <Popconfirm title="重置演示数据？" description="当前浏览器中的演示操作将恢复到初始状态。" okText="重置" cancelText="取消" onConfirm={resetDemo}><Button type="text" size="small" icon={<ReloadOutlined />}>重置</Button></Popconfirm>
+          </div>
+        </div>}
         <header className="app-header">
           <div className="flex min-w-0 items-center gap-3">
             <Button className="!flex xl:!hidden" type="text" icon={<MenuOutlined />} onClick={() => setMobileOpen(true)} aria-label="打开导航" />
