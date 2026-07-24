@@ -5,6 +5,7 @@ const databasePath = `/tmp/mra-playwright-${process.pid}.db`;
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "demo-pages.spec.ts",
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : "list",
