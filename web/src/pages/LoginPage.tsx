@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Form, Input, Segmented, message } from "antd";
-import { BookOutlined, CheckCircleOutlined, CodeOutlined, DatabaseOutlined, LockOutlined, ReadOutlined, UserOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, BookOutlined, CheckCircleOutlined, CodeOutlined, DatabaseOutlined, LockOutlined, ReadOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/api/client";
@@ -9,7 +9,7 @@ export default function LoginPage() {
   const staticPreview = import.meta.env.VITE_STATIC_PREVIEW === "true";
   const [form] = Form.useForm();
   const selectedRole = Form.useWatch("role", form);
-  const { user, login } = useAuth();
+  const { user, login, enterDemo } = useAuth();
   const navigate = useNavigate();
   const [register, setRegister] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -57,6 +57,11 @@ export default function LoginPage() {
     }
   }
 
+  function startDemo(role: "student" | "teacher") {
+    enterDemo(role);
+    navigate("/dashboard", { replace: true });
+  }
+
   return (
     <div className="min-h-screen bg-[#f4f7f6] text-slate-800">
       <header className="border-b border-slate-200 bg-white">
@@ -84,8 +89,23 @@ export default function LoginPage() {
         </section>
         <section className="flex justify-center lg:justify-end">
           <div className="w-full max-w-[440px] rounded-2xl border border-slate-200 bg-white p-8 lg:p-10">
-          <div className="mb-8"><p className="mb-2 text-sm font-bold text-teal-700">账号入口</p><h2 className="text-2xl font-black tracking-tight text-slate-900">{register ? "创建账号" : "登录教学平台"}</h2><p className="mt-2 text-sm text-slate-500">{register ? "选择使用身份，进入对应工作台" : "使用你的课程平台账号继续"}</p></div>
-          {staticPreview && <Alert className="mb-6" showIcon type="info" message="GitHub Pages 静态预览" description="当前页面用于查看前端效果；登录、题库和 AI 答疑需要另外部署 FastAPI 后端。" />}
+          <div className="mb-8"><p className="mb-2 text-sm font-bold text-teal-700">{staticPreview ? "在线产品演示" : "账号入口"}</p><h2 className="text-2xl font-black tracking-tight text-slate-900">{staticPreview ? "选择一个视角开始体验" : register ? "创建账号" : "登录教学平台"}</h2><p className="mt-2 text-sm text-slate-500">{staticPreview ? "无需账号，演示数据不会上传或影响其他访客" : register ? "选择使用身份，进入对应工作台" : "使用你的课程平台账号继续"}</p></div>
+          {staticPreview ? <>
+            <Alert className="mb-5" showIcon type="info" message="这是模拟数据演示" description="你可以浏览全部页面并体验主要交互；数据仅保存在当前浏览器。" />
+            <div className="space-y-3">
+              <button onClick={() => startDemo("teacher")} className="group flex w-full items-center gap-4 rounded-2xl border border-slate-200 p-4 text-left transition hover:border-teal-400 hover:bg-teal-50/60">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-teal-700 text-xl text-white"><TeamOutlined /></span>
+                <span className="min-w-0 flex-1"><span className="block font-extrabold text-slate-900">进入教师端演示</span><span className="mt-1 block text-sm leading-5 text-slate-500">班级雷达、分组干预与分层教学包</span></span>
+                <ArrowRightOutlined className="text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-teal-700" />
+              </button>
+              <button onClick={() => startDemo("student")} className="group flex w-full items-center gap-4 rounded-2xl border border-slate-200 p-4 text-left transition hover:border-teal-400 hover:bg-teal-50/60">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-xl text-white"><BookOutlined /></span>
+                <span className="min-w-0 flex-1"><span className="block font-extrabold text-slate-900">进入学生端演示</span><span className="mt-1 block text-sm leading-5 text-slate-500">班级任务、题库答疑与个性化学习路径</span></span>
+                <ArrowRightOutlined className="text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-teal-700" />
+              </button>
+            </div>
+            <p className="mt-5 text-center text-sm leading-6 text-slate-500">进入后可随时切换角色或重置演示数据</p>
+          </> : <>
           <Form form={form} layout="vertical" requiredMark={false} onFinish={submit} initialValues={{ role: "student" }}>
             <Form.Item name="username" label="用户名" rules={[{ required: true, message: "请输入用户名" }]}><Input size="large" prefix={<UserOutlined />} placeholder="请输入用户名" autoComplete="username" maxLength={64} /></Form.Item>
             {register && <Form.Item name="name" label="姓名"><Input size="large" placeholder="你的姓名或昵称" maxLength={64} /></Form.Item>}
@@ -112,6 +132,7 @@ export default function LoginPage() {
             </>
           )}
           <div className="mt-7 border-t border-slate-100 pt-6 text-center text-sm text-slate-500">{register ? "已有账号？" : "还没有账号？"}<button onClick={() => setRegister(v => !v)} className="ml-2 font-bold text-teal-700">{register ? "直接登录" : "立即注册"}</button></div>
+          </>}
         </div>
       </section>
       </main>

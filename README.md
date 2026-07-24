@@ -51,7 +51,7 @@ npm run dev
 
 ## GitHub Pages 静态预览
 
-仓库包含 `.github/workflows/pages.yml`，可将 React 前端部署到 GitHub Pages。Pages 只托管构建后的静态文件，不运行 FastAPI、SQLite/PostgreSQL 或模型服务，因此该版本仅用于查看登录页等前端视觉效果；登录、题库、班级和 AI 答疑仍需部署后端。
+仓库包含 `.github/workflows/pages.yml`，可将 React 前端部署到 GitHub Pages。Pages 构建会启用浏览器内模拟 API，访客无需账号即可分别进入教师端和学生端，浏览题库、任务、学习路径、班级雷达、教学包和预设答疑效果。演示操作仅保存在访客自己的浏览器中，不会写入真实数据库或调用模型服务；真实登录、多人共享数据和 AI 答疑仍需部署后端。
 
 ## PostgreSQL / Docker 部署验证
 
@@ -180,6 +180,7 @@ cd ../backend && pytest -q
 cd web
 npx playwright install chromium
 npm run test:e2e
+npm run test:demo
 ```
 
 数学内容统一经过 `MathMarkdown` 渲染：兼容 `$...$`、`$$...$$`、`\\(...\\)`、`\\[...\\]` 和题库中的二次转义分隔符，同时保护代码块与矩阵换行。无需使用文档 OCR API 处理已有 LaTeX。
