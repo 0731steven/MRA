@@ -436,6 +436,7 @@ async def test_handwritten_attempt_uses_mineru_text_for_diagnosis(api, monkeypat
     client, _teacher_token, student_token = api
     headers = {"Authorization": f"Bearer {student_token}"}
     captured_prompt = ""
+    monkeypatch.setenv("MINERU_TOKEN", "test-token")
 
     async def recognize(_self, _data_url):
         return "由贝叶斯公式得到 $P(A\\mid B)=\\frac{1}{2}$。"
@@ -463,6 +464,7 @@ async def test_handwritten_attempt_uses_mineru_text_for_diagnosis(api, monkeypat
 async def test_handwritten_attempt_fails_closed_when_ocr_fails(api, monkeypatch):
     client, _teacher_token, student_token = api
     headers = {"Authorization": f"Bearer {student_token}"}
+    monkeypatch.setenv("MINERU_TOKEN", "test-token")
 
     async def unavailable(_self, _data_url):
         raise MinerUError("temporary failure")
