@@ -10,6 +10,7 @@ from src.classroom.analytics import build_classroom_radar, suggest_intervention_
 from src.db.models import Classroom, User
 from src.db.session import Base, get_db
 from src.integrations.llm_client import LLMClient
+from src.integrations.mineru_client import MinerUClient, MinerUError
 from src.main import app
 from src.question_bank.service import get_question, load_questions
 
@@ -429,6 +430,58 @@ async def test_attempt_diagnostic_normalizes_model_error_taxonomy(api, monkeypat
     )
     assert response.status_code == 200
     assert response.json()["error_type"] == "表达不完整"
+
+
+async def test_handwritten_attempt_uses_mineru_text_for_diagnosis(api, monkeypatch):
+    client, _teacher_token, student_token = api
+    headers = {"Authorization": f"Bearer {student_token}"}
+    captured_prompt = ""
+
+    async def recognize(_self, _data_url):
+        return "由贝叶斯公式得到 $P(A\\mid B)=\\frac{1}{2}$。"
+
+    async def diagnose(_self, messages, **_kwargs):
+        nonlocal captured_prompt
+        captured_prompt = messages[0].content
+        return {"verdict": "partial", "feedback": "公式方向正确，请补充代入依据。", "error_type": "表达不完整"}
+
+    monkeypatch.setattr(MinerUClient, "extract_handwriting", recognize)
+    monkeypatch.setattr(LLMClient, "chat_json", diagnose)
+    response = await client.post(
+        "/api/question-bank/questions/P000080/attempts",
+        json={"input_mode": "image", "image_data_url": "data:image/png;base64,aW1hZ2U="},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ocr_status"] == "completed"
+    assert response.json()["ocr_provider"] == "mineru"
+    assert "贝叶斯公式" in response.json()["ocr_text"]
+    assert "贝叶斯公式" in captured_prompt
+
+
+async def test_handwritten_attempt_fails_closed_when_ocr_fails(api, monkeypatch):
+    client, _teacher_token, student_token = api
+    headers = {"Authorization": f"Bearer {student_token}"}
+
+    async def unavailable(_self, _data_url):
+        raise MinerUError("temporary failure")
+
+    async def should_not_run(*_args, **_kwargs):
+        raise AssertionError("diagnostic model must not guess when image OCR failed")
+
+    monkeypatch.setattr(MinerUClient, "extract_handwriting", unavailable)
+    monkeypatch.setattr(LLMClient, "chat_json", should_not_run)
+    response = await client.post(
+        "/api/question-bank/questions/P000080/attempts",
+        json={"input_mode": "image", "image_data_url": "data:image/png;base64,aW1hZ2U="},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["verdict"] == "needs_review"
+    assert response.json()["ocr_status"] == "failed"
+    assert response.json()["ocr_text"] is None
 
 
 async def test_browser_login_uses_httponly_cookie(api):

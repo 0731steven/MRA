@@ -30,6 +30,7 @@ async def test_old_sqlite_question_attempts_table_is_upgraded_additively(tmp_pat
     await engine.dispose()
 
     assert "assignment_id" in columns
+    assert {"ocr_text", "ocr_provider", "ocr_status"} <= columns
     assert "ix_question_attempts_assignment_id" in indexes
     assert {"classroom_id", "lesson_type", "learner_profile", "student_content", "package_json"} <= teaching_columns
     assert "ix_teaching_plans_classroom_id" in teaching_indexes

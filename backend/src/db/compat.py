@@ -35,6 +35,17 @@ async def ensure_local_sqlite_compatibility(connection: AsyncConnection) -> None
             )
         )
 
+    ocr_additions = {
+        "ocr_text": "TEXT",
+        "ocr_provider": "VARCHAR(32)",
+        "ocr_status": "VARCHAR(24)",
+    }
+    for column_name, definition in ocr_additions.items():
+        if column_name not in columns:
+            await connection.execute(
+                text(f"ALTER TABLE question_attempts ADD COLUMN {column_name} {definition}")
+            )
+
     await connection.execute(
         text(
             "CREATE INDEX IF NOT EXISTS ix_question_attempts_assignment_id "
