@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("teacher demo exposes evidence and teaching workflows", async ({ page }) => {
   await page.goto("./login");
   await page.getByRole("button", { name: /进入教师端演示/ }).click();
-  await expect(page).toHaveURL(/\/MRA\/dashboard$/);
+  await expect(page).toHaveURL(/\/PSA\/dashboard$/);
   await expect(page.getByText("模拟演示").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "打开演示教师的账号菜单" })).toBeVisible();
 
